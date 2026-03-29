@@ -47,19 +47,21 @@ private struct FrostedGlassBackground: View {
     }
 }
 
-/// Clear glass background — nearly transparent with specular highlights only.
-/// No blur layer; the wallpaper/lock screen shows through with just a thin tint.
+/// Clear glass background — native compositor blur for edge distortion, minimal tint to stay "clear".
 private struct ClearGlassBackground: View {
     var body: some View {
         ZStack {
-            // Barely-there tint — only enough to lift white text off any wallpaper
-            Color.black.opacity(0.04)
+            // Native compositor glass — provides the edge blur/distortion like Apple's music widget
+            LockScreenGlassView()
 
-            // Very faint body gradient — imperceptible except on pure-white backgrounds
+            // Very light dark overlay — just enough to lift white text, keeps it clear vs frosted
+            Color.black.opacity(0.06)
+
+            // Very faint body gradient — barely perceptible depth
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.02), location: 0),
-                    .init(color: .black.opacity(0.08), location: 1),
+                    .init(color: .white.opacity(0.03), location: 0),
+                    .init(color: .black.opacity(0.06), location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -79,8 +81,8 @@ private struct ClearGlassBackground: View {
             // Prismatic edge shimmer — very thin rainbow tint at the top lip
             LinearGradient(
                 stops: [
-                    .init(color: Color(hue: 0.58, saturation: 0.3, brightness: 1).opacity(0.08), location: 0.00),
-                    .init(color: Color(hue: 0.38, saturation: 0.2, brightness: 1).opacity(0.05), location: 0.025),
+                    .init(color: Color(hue: 0.58, saturation: 0.3, brightness: 1).opacity(0.10), location: 0.00),
+                    .init(color: Color(hue: 0.38, saturation: 0.2, brightness: 1).opacity(0.06), location: 0.025),
                     .init(color: .clear,                                                          location: 0.05),
                 ],
                 startPoint: .top,
