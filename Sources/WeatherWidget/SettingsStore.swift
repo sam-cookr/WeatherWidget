@@ -42,6 +42,14 @@ enum WidgetPosition: String, CaseIterable, SettingOption {
         case .bottomLeft:  return "↙ BL"
         }
     }
+    var fullLabel: String {
+        switch self {
+        case .topRight:    return "Top Right"
+        case .topLeft:     return "Top Left"
+        case .bottomRight: return "Bottom Right"
+        case .bottomLeft:  return "Bottom Left"
+        }
+    }
 }
 
 enum RefreshInterval: String, CaseIterable, SettingOption {
