@@ -1,148 +1,54 @@
 import SwiftUI
 import AppKit
 
-// MARK: - NSVisualEffectView wrapper (real compositor transparency)
+// MARK: - Lock-Screen Glass Background
 
-struct VisualEffectView: NSViewRepresentable {
-    var material: NSVisualEffectView.Material
-    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material     = material
-        v.blendingMode = blendingMode
-        v.state        = .active
-        v.isEmphasized = false
-        return v
-    }
-    func updateNSView(_ v: NSVisualEffectView, context: Context) {
-        v.material     = material
-        v.blendingMode = blendingMode
-    }
-}
-
-// MARK: - Runtime Glass Adapter
-
-struct AdaptiveGlassView: NSViewRepresentable {
-    var material: NSVisualEffectView.Material
-    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
-    var cornerRadius: CGFloat = 28
-
+/// Wraps `NSGlassEffectView` (macOS 15+) with an `NSVisualEffectView` fallback.
+/// This provides native compositor-level transparency without Screen Recording permission.
+private struct LockScreenGlassView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        let host = NSView()
-        host.wantsLayer = true
-        host.layer?.isOpaque = false
-        host.layer?.cornerCurve = .continuous
-        host.layer?.cornerRadius = cornerRadius
-        host.layer?.masksToBounds = true
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.isOpaque = false
 
-        if let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
-            let glass = glassClass.init(frame: .zero)
-            glass.frame = host.bounds
+        if let GlassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
+            let glass = GlassClass.init(frame: .zero)
             glass.autoresizingMask = [.width, .height]
-            applyRuntimeGlassSettings(to: glass)
-            host.addSubview(glass)
+            container.addSubview(glass)
         } else {
-            let fallback = NSVisualEffectView(frame: host.bounds)
-            fallback.autoresizingMask = [.width, .height]
-            fallback.material = material
-            fallback.blendingMode = blendingMode
-            fallback.state = .active
-            fallback.isEmphasized = false
-            host.addSubview(fallback)
+            let blur = NSVisualEffectView(frame: .zero)
+            blur.autoresizingMask = [.width, .height]
+            blur.material    = .hudWindow
+            blur.blendingMode = .behindWindow
+            blur.state       = .active
+            container.addSubview(blur)
         }
-        return host
+        return container
     }
 
-    func updateNSView(_ host: NSView, context: Context) {
-        guard let glassOrFallback = host.subviews.first else { return }
-        applyRuntimeGlassSettings(to: glassOrFallback)
-        if let fallback = glassOrFallback as? NSVisualEffectView {
-            fallback.material = material
-            fallback.blendingMode = blendingMode
-        }
-        host.layer?.cornerRadius = cornerRadius
-        host.layer?.masksToBounds = true
-    }
-
-    private func applyRuntimeGlassSettings(to view: NSView) {
-        let setState = NSSelectorFromString("setState:")
-        if view.responds(to: setState) {
-            (view as NSObject).setValue(NSVisualEffectView.State.active.rawValue, forKey: "state")
-        }
-        let setBlending = NSSelectorFromString("setBlendingMode:")
-        if view.responds(to: setBlending) {
-            (view as NSObject).setValue(blendingMode.rawValue, forKey: "blendingMode")
-        }
-        let setMaterial = NSSelectorFromString("setMaterial:")
-        if view.responds(to: setMaterial) {
-            (view as NSObject).setValue(material.rawValue, forKey: "material")
-        }
-        let setEmphasized = NSSelectorFromString("setEmphasized:")
-        if view.responds(to: setEmphasized) {
-            (view as NSObject).setValue(false, forKey: "emphasized")
-        }
-
-        // NSGlassEffectView runtime tuning (only when supported by selector).
-        let setStyle = NSSelectorFromString("setStyle:")
-        if view.responds(to: setStyle) {
-            (view as NSObject).setValue(1, forKey: "style")
-        }
-        let setVariant = NSSelectorFromString("setVariant:")
-        if view.responds(to: setVariant) {
-            (view as NSObject).setValue(1, forKey: "variant")
-        }
-        let setScrimState = NSSelectorFromString("set_scrimState:")
-        if view.responds(to: setScrimState) {
-            (view as NSObject).setValue(0, forKey: "scrimState")
-        }
-        let setSubduedState = NSSelectorFromString("set_subduedState:")
-        if view.responds(to: setSubduedState) {
-            (view as NSObject).setValue(0, forKey: "subduedState")
-        }
-        let setContentLensing = NSSelectorFromString("set_contentLensing:")
-        if view.responds(to: setContentLensing) {
-            (view as NSObject).setValue(1, forKey: "contentLensing")
-        }
-        let setReducedShadow = NSSelectorFromString("set_useReducedShadowRadius:")
-        if view.responds(to: setReducedShadow) {
-            (view as NSObject).setValue(true, forKey: "useReducedShadowRadius")
-        }
-        let setTint = NSSelectorFromString("setTintColor:")
-        if view.responds(to: setTint) {
-            (view as NSObject).setValue(NSColor.white.withAlphaComponent(0.01), forKey: "tintColor")
-        }
-        let setCornerRadius = NSSelectorFromString("setCornerRadius:")
-        if view.responds(to: setCornerRadius) {
-            (view as NSObject).setValue(cornerRadius, forKey: "cornerRadius")
-        }
-        let setClipsToBounds = NSSelectorFromString("setClipsToBounds:")
-        if view.responds(to: setClipsToBounds) {
-            (view as NSObject).setValue(true, forKey: "clipsToBounds")
-        }
-    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-struct LockScreenGlassProbeView: View {
+/// Glass card background — native blur + dark overlay for consistent readability
+/// across all wallpapers, plus a subtle top specular.
+private struct GlassBackground: View {
     var body: some View {
         ZStack {
-            LiquidGlassBackground(intensity: 1.0)
+            LockScreenGlassView()
 
-            VStack(spacing: 8) {
-                Text("Glass Probe")
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.92))
-                Text("Lock-screen level + glass only")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(.white.opacity(0.62))
-            }
+            // Darken so content stays readable on light wallpapers
+            Color.black.opacity(0.22)
+
+            // Top specular lift
+            LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0.09), location: 0),
+                    .init(color: .clear, location: 0.22),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
-        .frame(width: 280, height: 180)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(.white.opacity(0.24), lineWidth: 0.8)
-        )
     }
 }
 
@@ -155,7 +61,7 @@ struct WeatherView: View {
 
     var body: some View {
         ZStack {
-            LiquidGlassBackground(intensity: settings.glassIntensity.overlayScale)
+            GlassBackground()
 
             Group {
                 if showSettings {
@@ -177,139 +83,36 @@ struct WeatherView: View {
                             removal:   .move(edge: .leading).combined(with: .opacity)
                         ))
                 } else if let err = viewModel.errorMessage {
-                    errorView(message: err)
+                    ErrorView(message: err, viewModel: viewModel, showSettings: $showSettings)
                         .transition(.opacity)
                 }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showSettings)
 
-            // Liquid glass border — angular gradient simulates edge lighting
-            liquidGlassBorder
+            // Specular edge — angular gradient simulates glass rim lighting
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(
+                    AngularGradient(
+                        stops: [
+                            .init(color: .white.opacity(0.45), location: 0.00),
+                            .init(color: .white.opacity(0.18), location: 0.10),
+                            .init(color: .white.opacity(0.05), location: 0.30),
+                            .init(color: .white.opacity(0.01), location: 0.50),
+                            .init(color: .white.opacity(0.05), location: 0.70),
+                            .init(color: .white.opacity(0.18), location: 0.90),
+                            .init(color: .white.opacity(0.45), location: 1.00),
+                        ],
+                        center: .center,
+                        startAngle: .degrees(-90),
+                        endAngle: .degrees(270)
+                    ),
+                    lineWidth: 1.0
+                )
         }
         .frame(width: 280, height: 380)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 10)
-        .shadow(color: .black.opacity(0.18), radius: 3,  x: 0, y: 1)
-    }
-
-    private var liquidGlassBorder: some View {
-        RoundedRectangle(cornerRadius: 28, style: .continuous)
-            .stroke(
-                AngularGradient(
-                    stops: [
-                        .init(color: .white.opacity(0.42), location: 0.00),
-                        .init(color: .white.opacity(0.18), location: 0.10),
-                        .init(color: .white.opacity(0.05), location: 0.30),
-                        .init(color: .white.opacity(0.01), location: 0.50),
-                        .init(color: .white.opacity(0.04), location: 0.70),
-                        .init(color: .white.opacity(0.16), location: 0.90),
-                        .init(color: .white.opacity(0.42), location: 1.00),
-                    ],
-                    center: .center,
-                    startAngle: .degrees(-90),
-                    endAngle: .degrees(270)
-                ),
-                lineWidth: 1.0
-            )
-    }
-
-    private func errorView(message: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.wifi")
-                .font(.system(size: 36))
-                .foregroundColor(.white.opacity(0.5))
-            Text(message)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.6))
-                .multilineTextAlignment(.center)
-            Button("Retry") {
-                Task { await viewModel.fetch() }
-            }
-            .buttonStyle(GlassButtonStyle())
-            Button {
-                withAnimation(.spring(response: 0.35)) { showSettings = true }
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.35))
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
-        }
-        .padding(24)
-    }
-}
-
-// MARK: - Liquid Glass Background
-
-struct LiquidGlassBackground: View {
-    var intensity: Double = 1.0
-
-    // Map intensity to NSVisualEffectView material
-    private var material: NSVisualEffectView.Material {
-        if intensity < 0.8 { return .hudWindow }
-        if intensity > 1.2 { return .menu }
-        return .popover
-    }
-
-    var body: some View {
-        ZStack {
-            // ── Layer 1: Native compositor glass (no Screen Recording permission) ──
-            AdaptiveGlassView(material: material, cornerRadius: 28)
-                .opacity(1.0)
-
-            // ── Layer 2: Micro-tint to match lock-screen-style glass depth ──
-            LinearGradient(
-                stops: [
-                    .init(color: .white.opacity(0.03 * intensity), location: 0.0),
-                    .init(color: .white.opacity(0.01 * intensity), location: 0.25),
-                    .init(color: .clear,                           location: 0.6),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // ── Layer 3: Soft caustic glow, minimal haze ──
-            RadialGradient(
-                stops: [
-                    .init(color: .white.opacity(0.022 * intensity), location: 0.0),
-                    .init(color: .white.opacity(0.004 * intensity), location: 0.4),
-                    .init(color: .clear,                           location: 1.0),
-                ],
-                center: UnitPoint(x: 0.22, y: 0.12),
-                startRadius: 0, endRadius: 260
-            )
-
-            // ── Layer 4: Primary specular — rim highlight ──
-            LinearGradient(
-                stops: [
-                    .init(color: .white.opacity(0.10 * intensity), location: 0.00),
-                    .init(color: .white.opacity(0.018 * intensity), location: 0.05),
-                    .init(color: .white.opacity(0.0015 * intensity), location: 0.10),
-                    .init(color: .clear,                           location: 0.18),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-
-            // ── Layer 5: Left rim specular ──
-            LinearGradient(
-                stops: [
-                    .init(color: .white.opacity(0.015 * intensity), location: 0.0),
-                    .init(color: .white.opacity(0.003 * intensity), location: 0.04),
-                    .init(color: .clear,                           location: 0.08),
-                ],
-                startPoint: .leading, endPoint: .trailing
-            )
-
-            // ── Layer 6: Bottom bounce light ──
-            LinearGradient(
-                stops: [
-                    .init(color: .clear,                           location: 0.88),
-                    .init(color: .white.opacity(0.006 * intensity), location: 1.00),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-        }
+        .shadow(color: .black.opacity(0.5),  radius: 24, x: 0, y: 12)
+        .shadow(color: .black.opacity(0.20), radius: 3,  x: 0, y: 1)
     }
 }
 
@@ -323,7 +126,7 @@ struct WeatherContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // Location row
+            // ── Location row ──────────────────────────────────────────────────
             HStack(spacing: 6) {
                 Image(systemName: "location.fill")
                     .font(.system(size: 10, weight: .medium))
@@ -354,22 +157,22 @@ struct WeatherContent: View {
             .padding(.horizontal, 18)
             .padding(.top, 18)
 
-            // Icon + Temp + Condition
+            // ── Temperature + Condition ───────────────────────────────────────
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: WeatherViewModel.sfSymbol(for: weather.conditionCode))
                     .font(.system(size: 38))
                     .symbolRenderingMode(.multicolor)
-                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .top, spacing: 0) {
                         Text("\(Int(weather.temperature.rounded()))")
-                            .font(.system(size: 42, weight: .thin, design: .rounded))
+                            .font(.system(size: 44, weight: .thin, design: .rounded))
                             .foregroundColor(.white)
                         Text("°")
-                            .font(.system(size: 20, weight: .light))
+                            .font(.system(size: 22, weight: .light))
                             .foregroundColor(.white.opacity(0.7))
-                            .padding(.top, 4)
+                            .padding(.top, 5)
                     }
                     Text(weather.condition)
                         .font(.system(size: 13, weight: .regular))
@@ -388,8 +191,9 @@ struct WeatherContent: View {
 
             Spacer(minLength: 12)
 
+            // ── Detail rows ───────────────────────────────────────────────────
             detailRow([
-                ("thermometer.medium", "Feels like", weather.feelsLikeString),
+                ("thermometer.medium", "Feels Like", weather.feelsLikeString),
                 ("humidity",           "Humidity",   "\(weather.humidity)%"),
                 ("wind",               "Wind",       weather.windString),
             ])
@@ -404,31 +208,13 @@ struct WeatherContent: View {
 
             Spacer().frame(height: 8)
 
-            // Sunrise / Sunset
+            // ── Sunrise / Sunset ──────────────────────────────────────────────
             HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sunrise.fill")
-                        .font(.system(size: 13))
-                        .symbolRenderingMode(.multicolor)
-                    Text(weather.sunrise)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.85))
-                }
-                .frame(maxWidth: .infinity)
-
+                sunriseSunsetCell(icon: "sunrise.fill", time: weather.sunrise)
                 Rectangle()
-                    .fill(.white.opacity(0.06))
+                    .fill(.white.opacity(0.08))
                     .frame(width: 0.5, height: 20)
-
-                HStack(spacing: 6) {
-                    Image(systemName: "sunset.fill")
-                        .font(.system(size: 13))
-                        .symbolRenderingMode(.multicolor)
-                    Text(weather.sunset)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.85))
-                }
-                .frame(maxWidth: .infinity)
+                sunriseSunsetCell(icon: "sunset.fill", time: weather.sunset)
             }
             .padding(.vertical, 10)
             .background(pillBackground)
@@ -438,12 +224,14 @@ struct WeatherContent: View {
         }
     }
 
+    // MARK: - Sub-views
+
     private func detailRow(_ items: [(String, String, String)]) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                if i > 0 {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                if index > 0 {
                     Rectangle()
-                        .fill(.white.opacity(0.06))
+                        .fill(.white.opacity(0.08))
                         .frame(width: 0.5, height: 26)
                 }
                 DetailCell(icon: item.0, label: item.1, value: item.2)
@@ -454,40 +242,40 @@ struct WeatherContent: View {
         .padding(.horizontal, 12)
     }
 
+    private func sunriseSunsetCell(icon: String, time: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .symbolRenderingMode(.multicolor)
+            Text(time)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.85))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private var pillBackground: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.14), location: 0),
-                            .init(color: .white.opacity(0.04), location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            // Top specular on the pill
+                .fill(Color.white.opacity(0.08))
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(0.22), location: 0),
-                            .init(color: .clear,               location: 0.55),
+                            .init(color: .white.opacity(0.10), location: 0),
+                            .init(color: .clear, location: 0.5),
                         ],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        startPoint: .top, endPoint: .bottom
                     )
                 )
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(0.38), location: 0),
-                            .init(color: .white.opacity(0.05), location: 1),
+                            .init(color: .white.opacity(0.28), location: 0),
+                            .init(color: .white.opacity(0.08), location: 1),
                         ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: .topLeading, endPoint: .bottomTrailing
                     ),
                     lineWidth: 0.5
                 )
@@ -507,7 +295,7 @@ struct DetailCell: View {
             Image(systemName: icon)
                 .font(.system(size: 13))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(.white.opacity(0.55))
             Text(value)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
@@ -521,7 +309,41 @@ struct DetailCell: View {
     }
 }
 
-// MARK: - Button Style
+// MARK: - Error View
+
+struct ErrorView: View {
+    let message: String
+    @ObservedObject var viewModel: WeatherViewModel
+    @Binding var showSettings: Bool
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.wifi")
+                .font(.system(size: 36))
+                .foregroundColor(.white.opacity(0.5))
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+            Button("Retry") {
+                Task { await viewModel.fetch() }
+            }
+            .buttonStyle(GlassButtonStyle())
+            Button {
+                withAnimation(.spring(response: 0.35)) { showSettings = true }
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.35))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .padding(24)
+    }
+}
+
+// MARK: - Glass Button Style
 
 struct GlassButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

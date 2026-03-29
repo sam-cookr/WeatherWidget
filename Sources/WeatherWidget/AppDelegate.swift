@@ -8,65 +8,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var floatingWindow: NSWindow?
     var viewModel: WeatherViewModel?
     let settings = SettingsStore()
-    private let glassProbeOnly: Bool
-    private let glassExperimental: Bool
     private var cancellables = Set<AnyCancellable>()
-
-    init(glassProbeOnly: Bool = false, glassExperimental: Bool = false) {
-        self.glassProbeOnly = glassProbeOnly
-        self.glassExperimental = glassExperimental
-        super.init()
-    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.prohibited)
-        if glassProbeOnly {
-            setupGlassProbeWindow()
-            return
-        }
         setupFloatingWindow()
         registerScreenNotifications()
         observeSettings()
-    }
-
-    @MainActor private func setupGlassProbeWindow() {
-        let probe = LockScreenGlassProbeView()
-        let hosting = NSHostingController(rootView: probe)
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 280, height: 180),
-            styleMask: [.borderless, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.contentViewController = hosting
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = false
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovable = false
-        window.canBecomeVisibleWithoutLogin = true
-        window.level = .init(rawValue: .init(Int32.max - 2))
-        window.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
-        window.isReleasedWhenClosed = false
-        window.contentView?.wantsLayer = true
-        window.contentView?.layer?.cornerRadius = 28
-        window.contentView?.layer?.cornerCurve = .continuous
-        window.contentView?.layer?.masksToBounds = true
-
-        if glassExperimental {
-            delegateWindowToExperimentalSkySpace(window)
-        } else {
-            SkyLightOperator.shared.delegateWindow(window)
-        }
-        floatingWindow = window
-
-        if let screen = NSScreen.main {
-            let vf = screen.visibleFrame
-            window.setFrameOrigin(NSPoint(x: vf.maxX - 280 - 20, y: vf.maxY - 180 - 20))
-        }
-        window.makeKeyAndOrderFront(nil)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -99,16 +47,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screenObscured() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self, let window = self.floatingWindow else { return }
+            guard let self, let window = self.floatingWindow, let screen = NSScreen.main else { return }
             window.makeKeyAndOrderFront(nil)
-            // Re-apply position in case SkyLight shifted it
-            if let screen = NSScreen.main {
-                window.setFrameOrigin(
-                    self.origin(for: self.settings.position,
-                                windowSize: window.frame.size,
-                                screen: screen)
-                )
-            }
+            window.setFrameOrigin(self.origin(for: self.settings.position,
+                                              windowSize: window.frame.size,
+                                              screen: screen))
         }
     }
 
@@ -122,9 +65,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let vm = WeatherViewModel(settings: settings)
         self.viewModel = vm
 
-        let contentView = WeatherView(viewModel: vm)
-            .environmentObject(settings)
-        let hosting = NSHostingController(rootView: contentView)
+        let hosting = NSHostingController(
+            rootView: WeatherView(viewModel: vm).environmentObject(settings)
+        )
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 280, height: 380),
@@ -141,23 +84,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isMovable                    = false
         window.canBecomeVisibleWithoutLogin = true
         window.level = .init(rawValue: .init(Int32.max - 2))
-        window.collectionBehavior = [
-            .fullScreenAuxiliary,
-            .stationary,
-            .canJoinAllSpaces,
-            .ignoresCycle,
-        ]
+        window.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
         window.isReleasedWhenClosed = false
         window.contentView?.wantsLayer = true
         window.contentView?.layer?.cornerRadius = 28
         window.contentView?.layer?.cornerCurve = .continuous
         window.contentView?.layer?.masksToBounds = true
 
-        if glassExperimental {
-            delegateWindowToExperimentalSkySpace(window)
-        } else {
-            SkyLightOperator.shared.delegateWindow(window)
-        }
+        delegateWindowToSkySpace(window)
         floatingWindow = window
 
         // Delay placement so SkyLight's internal setup doesn't override us
@@ -175,63 +109,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func repositionWindow(to position: WidgetPosition) {
         guard let window = floatingWindow, let screen = NSScreen.main else { return }
-        let target = origin(for: position, windowSize: window.frame.size, screen: screen)
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration       = 0.45
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().setFrameOrigin(target)
-        }
+        window.setFrameOrigin(origin(for: position, windowSize: window.frame.size, screen: screen))
     }
 
-    /// Returns the bottom-left origin for `position` using `screen.visibleFrame`
-    /// (excludes menu bar and Dock so the widget is always fully on-screen).
     private func origin(for position: WidgetPosition, windowSize: CGSize, screen: NSScreen) -> NSPoint {
-        let vf     = screen.visibleFrame   // excludes menu bar + Dock
+        let f      = screen.frame   // use full frame so lock-screen and desktop positions match
         let margin: CGFloat = 20
         let w      = windowSize.width
         let h      = windowSize.height
 
         switch position {
-        case .topRight:
-            return NSPoint(x: vf.maxX - w - margin, y: vf.maxY - h - margin)
-        case .topLeft:
-            return NSPoint(x: vf.minX + margin,     y: vf.maxY - h - margin)
-        case .bottomRight:
-            return NSPoint(x: vf.maxX - w - margin, y: vf.minY + margin)
-        case .bottomLeft:
-            return NSPoint(x: vf.minX + margin,     y: vf.minY + margin)
+        case .topRight:    return NSPoint(x: f.maxX - w - margin, y: f.maxY - h - margin)
+        case .topLeft:     return NSPoint(x: f.minX + margin,     y: f.maxY - h - margin)
+        case .bottomRight: return NSPoint(x: f.maxX - w - margin, y: f.minY + margin)
+        case .bottomLeft:  return NSPoint(x: f.minX + margin,     y: f.minY + margin)
         }
     }
 
-    /// Experimental SkyLight space placement: use screen-lock absolute level (300)
-    /// instead of NotificationCenter-at-lock level (400).
-    private func delegateWindowToExperimentalSkySpace(_ window: NSWindow) {
-        typealias F_SLSMainConnectionID = @convention(c) () -> Int32
-        typealias F_SLSSpaceCreate = @convention(c) (Int32, Int32, Int32) -> Int32
-        typealias F_SLSSpaceSetAbsoluteLevel = @convention(c) (Int32, Int32, Int32) -> Int32
-        typealias F_SLSShowSpaces = @convention(c) (Int32, CFArray) -> Int32
-        typealias F_SLSSpaceAddWindowsAndRemoveFromSpaces = @convention(c) (Int32, Int32, CFArray, Int32) -> Int32
+    // MARK: - SkyLight Space Placement
+    //
+    // Places the window in a SkyLight compositor space at level 300, which makes it
+    // visible on the macOS lock screen without Screen Recording permission.
 
-        guard let handler = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight", RTLD_NOW),
-              let symConn = dlsym(handler, "SLSMainConnectionID"),
-              let symCreate = dlsym(handler, "SLSSpaceCreate"),
-              let symSetLevel = dlsym(handler, "SLSSpaceSetAbsoluteLevel"),
-              let symShow = dlsym(handler, "SLSShowSpaces"),
-              let symAdd = dlsym(handler, "SLSSpaceAddWindowsAndRemoveFromSpaces") else {
+    private func delegateWindowToSkySpace(_ window: NSWindow) {
+        typealias ConnectionID = @convention(c) () -> Int32
+        typealias SpaceCreate  = @convention(c) (Int32, Int32, Int32) -> Int32
+        typealias SpaceLevel   = @convention(c) (Int32, Int32, Int32) -> Int32
+        typealias ShowSpaces   = @convention(c) (Int32, CFArray) -> Int32
+        typealias AddWindows   = @convention(c) (Int32, Int32, CFArray, Int32) -> Int32
+
+        guard
+            let lib      = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight", RTLD_NOW),
+            let symConn   = dlsym(lib, "SLSMainConnectionID"),
+            let symCreate = dlsym(lib, "SLSSpaceCreate"),
+            let symLevel  = dlsym(lib, "SLSSpaceSetAbsoluteLevel"),
+            let symShow   = dlsym(lib, "SLSShowSpaces"),
+            let symAdd    = dlsym(lib, "SLSSpaceAddWindowsAndRemoveFromSpaces")
+        else {
+            // Fallback to the SkyLightWindow package if private APIs are unavailable
             SkyLightOperator.shared.delegateWindow(window)
             return
         }
 
-        let SLSMainConnectionID = unsafeBitCast(symConn, to: F_SLSMainConnectionID.self)
-        let SLSSpaceCreate = unsafeBitCast(symCreate, to: F_SLSSpaceCreate.self)
-        let SLSSpaceSetAbsoluteLevel = unsafeBitCast(symSetLevel, to: F_SLSSpaceSetAbsoluteLevel.self)
-        let SLSShowSpaces = unsafeBitCast(symShow, to: F_SLSShowSpaces.self)
-        let SLSSpaceAddWindowsAndRemoveFromSpaces = unsafeBitCast(symAdd, to: F_SLSSpaceAddWindowsAndRemoveFromSpaces.self)
+        let conn   = unsafeBitCast(symConn,   to: ConnectionID.self)()
+        let create = unsafeBitCast(symCreate,  to: SpaceCreate.self)
+        let level  = unsafeBitCast(symLevel,   to: SpaceLevel.self)
+        let show   = unsafeBitCast(symShow,    to: ShowSpaces.self)
+        let add    = unsafeBitCast(symAdd,     to: AddWindows.self)
 
-        let connection = SLSMainConnectionID()
-        let space = SLSSpaceCreate(connection, 1, 0)
-        _ = SLSSpaceSetAbsoluteLevel(connection, space, 300)
-        _ = SLSShowSpaces(connection, [space] as CFArray)
-        _ = SLSSpaceAddWindowsAndRemoveFromSpaces(connection, space, [window.windowNumber] as CFArray, 7)
+        let space = create(conn, 1, 0)
+        _ = level(conn, space, 300)
+        _ = show(conn, [space] as CFArray)
+        _ = add(conn, space, [window.windowNumber] as CFArray, 7)
     }
 }

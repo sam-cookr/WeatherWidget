@@ -39,30 +39,27 @@ struct SettingsPanel: View {
             separator
 
             VStack(alignment: .leading, spacing: 0) {
-                settingsRow(label: "TEMPERATURE", icon: "thermometer.medium") {
-                    GlassSegmentPicker(options: Array(TempUnit.allCases), selection: $settings.tempUnit)
+                settingRow(label: "TEMPERATURE", icon: "thermometer.medium") {
+                    SegmentPicker(options: Array(TempUnit.allCases), selection: $settings.tempUnit)
                 }
-                settingsRow(label: "WIND SPEED", icon: "wind") {
-                    GlassSegmentPicker(options: Array(WindUnit.allCases), selection: $settings.windUnit)
+                settingRow(label: "WIND SPEED", icon: "wind") {
+                    SegmentPicker(options: Array(WindUnit.allCases), selection: $settings.windUnit)
                 }
 
                 separator.padding(.vertical, 4)
 
-                settingsRow(label: "POSITION", icon: "arrow.up.left.and.arrow.down.right") {
-                    GlassSegmentPicker(options: Array(WidgetPosition.allCases), selection: $settings.position)
+                settingRow(label: "POSITION", icon: "arrow.up.left.and.arrow.down.right") {
+                    SegmentPicker(options: Array(WidgetPosition.allCases), selection: $settings.position)
                 }
-                settingsRow(label: "GLASS DEPTH", icon: "circle.hexagongrid") {
-                    GlassSegmentPicker(options: Array(GlassIntensity.allCases), selection: $settings.glassIntensity)
-                }
-                settingsRow(label: "AUTO-REFRESH", icon: "arrow.clockwise") {
-                    GlassSegmentPicker(options: Array(RefreshInterval.allCases), selection: $settings.refreshInterval)
+                settingRow(label: "AUTO-REFRESH", icon: "arrow.clockwise") {
+                    SegmentPicker(options: Array(RefreshInterval.allCases), selection: $settings.refreshInterval)
                 }
             }
             .padding(.top, 4)
 
             Spacer()
 
-            Text("WeatherWidget · Open Meteo")
+            Text("WeatherWidget · Open-Meteo")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(.white.opacity(0.2))
                 .frame(maxWidth: .infinity)
@@ -77,7 +74,7 @@ struct SettingsPanel: View {
             .padding(.horizontal, 12)
     }
 
-    private func settingsRow<Content: View>(
+    private func settingRow<Content: View>(
         label: String,
         icon: String,
         @ViewBuilder content: () -> Content
@@ -101,26 +98,24 @@ struct SettingsPanel: View {
 
 // MARK: - Segment Picker
 
-struct GlassSegmentPicker<T: SettingOption>: View {
+struct SegmentPicker<T: SettingOption>: View {
     let options: [T]
     @Binding var selection: T
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options, id: \.self) { option in
-                let isSelected = selection == option
+                let selected = selection == option
                 Button(option.label) {
                     withAnimation(.easeInOut(duration: 0.15)) { selection = option }
                 }
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(
-                    Capsule().fill(isSelected ? Color.white.opacity(0.22) : Color.clear)
-                )
-                .foregroundColor(isSelected ? .white : .white.opacity(0.4))
-                .font(.system(size: 11, weight: isSelected ? .semibold : .regular, design: .rounded))
+                .background(Capsule().fill(selected ? Color.white.opacity(0.22) : Color.clear))
+                .foregroundColor(selected ? .white : .white.opacity(0.4))
+                .font(.system(size: 11, weight: selected ? .semibold : .regular, design: .rounded))
                 .buttonStyle(.plain)
-                .animation(.easeInOut(duration: 0.15), value: isSelected)
+                .animation(.easeInOut(duration: 0.15), value: selected)
             }
         }
         .padding(3)

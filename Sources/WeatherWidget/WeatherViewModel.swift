@@ -24,7 +24,7 @@ struct WeatherData {
     var tempString: String      { "\(Int(temperature.rounded()))°" }
     var feelsLikeString: String { "\(Int(feelsLike.rounded()))°" }
     var dewPointString: String  { "\(Int(dewPoint.rounded()))°" }
-    var highLowString: String   { "H: \(Int(high.rounded()))°  ·  L: \(Int(low.rounded()))°" }
+    var highLowString: String   { "H: \(Int(high.rounded()))° · L: \(Int(low.rounded()))°" }
     var windString: String      { "\(Int(windSpeed.rounded())) \(windUnit)" }
     var uvString: String        { "\(Int(uvIndex.rounded()))" }
     var precipString: String    { "\(precipChance)%" }
