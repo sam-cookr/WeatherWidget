@@ -2,6 +2,9 @@
 
 A minimal macOS weather widget with a native glass aesthetic. It floats in the corner of your screen and stays visible **above the lock screen** — no wallpaper access, no Screen Recording permission required.
 
+<img width="280" height="380" alt="Screenshot 2026-03-29 at 17 10 33" src="https://github.com/user-attachments/assets/9a630c42-6c16-4962-873c-4115e51c3dbe" />
+
+
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue) ![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange) ![License MIT](https://img.shields.io/badge/license-MIT-green)
 
 ## Download
