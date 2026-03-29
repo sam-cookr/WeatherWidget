@@ -54,6 +54,9 @@ struct SettingsPanel: View {
                 settingRow(label: "AUTO-REFRESH", icon: "arrow.clockwise") {
                     SegmentPicker(options: Array(RefreshInterval.allCases), selection: $settings.refreshInterval)
                 }
+                settingRow(label: "GLASS STYLE", icon: "circle.lefthalf.filled") {
+                    SegmentPicker(options: Array(GlassStyle.allCases), selection: $settings.glassStyle)
+                }
             }
             .padding(.top, 4)
 

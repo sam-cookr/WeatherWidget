@@ -29,17 +29,12 @@ private struct LockScreenGlassView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-/// Glass card background — native blur + dark overlay for consistent readability
-/// across all wallpapers, plus a subtle top specular.
-private struct GlassBackground: View {
+/// Frosted glass background — native compositor blur with dark overlay for readability.
+private struct FrostedGlassBackground: View {
     var body: some View {
         ZStack {
             LockScreenGlassView()
-
-            // Darken so content stays readable on light wallpapers
             Color.black.opacity(0.22)
-
-            // Top specular lift
             LinearGradient(
                 stops: [
                     .init(color: .white.opacity(0.09), location: 0),
@@ -48,6 +43,72 @@ private struct GlassBackground: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+        }
+    }
+}
+
+/// Clear glass background — nearly transparent with specular highlights only.
+/// No blur layer; the wallpaper/lock screen shows through with just a thin tint.
+private struct ClearGlassBackground: View {
+    var body: some View {
+        ZStack {
+            // Very thin dark tint — just enough contrast for white text
+            Color.black.opacity(0.08)
+
+            // Subtle body gradient — slightly darker at bottom aids readability
+            LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0.04), location: 0),
+                    .init(color: .black.opacity(0.14), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Primary specular — bright band near top simulates light hitting glass
+            LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0.38), location: 0),
+                    .init(color: .white.opacity(0.14), location: 0.07),
+                    .init(color: .clear,               location: 0.18),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Prismatic edge shimmer — very thin rainbow tint at the top lip
+            LinearGradient(
+                stops: [
+                    .init(color: Color(hue: 0.58, saturation: 0.35, brightness: 1).opacity(0.10), location: 0.00),
+                    .init(color: Color(hue: 0.38, saturation: 0.25, brightness: 1).opacity(0.07), location: 0.025),
+                    .init(color: .clear,                                                           location: 0.055),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Bottom inner reflection — faint upward lift from the base edge
+            LinearGradient(
+                stops: [
+                    .init(color: .clear,               location: 0.80),
+                    .init(color: .white.opacity(0.06), location: 1.00),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+}
+
+/// Selects between frosted and clear glass based on the current setting.
+private struct GlassBackground: View {
+    let style: GlassStyle
+
+    var body: some View {
+        if style == .clear {
+            ClearGlassBackground()
+        } else {
+            FrostedGlassBackground()
         }
     }
 }
@@ -61,7 +122,7 @@ struct WeatherView: View {
 
     var body: some View {
         ZStack {
-            GlassBackground()
+            GlassBackground(style: settings.glassStyle)
 
             Group {
                 if showSettings {
