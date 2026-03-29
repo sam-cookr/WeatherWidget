@@ -5,26 +5,29 @@ APP_NAME="WeatherWidget"
 BUNDLE_ID="com.samcooke.WeatherWidget"
 VERSION="1.1"
 
+# ── Build ──────────────────────────────────────────────────────────────────
 echo "==> Building $APP_NAME $VERSION (release)..."
 swift build -c release
-RELEASE_DIR=$(swift build -c release --show-bin-path)
+RELEASE_DIR=$(swift build -c release --show-bin-path 2>/dev/null)
 
+# ── Icon ───────────────────────────────────────────────────────────────────
 echo "==> Generating icon..."
 swift generate_icon.swift
 mkdir -p icon.iconset
-sips -z 16   16   icon.png --out icon.iconset/icon_16x16.png
-sips -z 32   32   icon.png --out icon.iconset/icon_16x16@2x.png
-sips -z 32   32   icon.png --out icon.iconset/icon_32x32.png
-sips -z 64   64   icon.png --out icon.iconset/icon_32x32@2x.png
-sips -z 128  128  icon.png --out icon.iconset/icon_128x128.png
-sips -z 256  256  icon.png --out icon.iconset/icon_128x128@2x.png
-sips -z 256  256  icon.png --out icon.iconset/icon_256x256.png
-sips -z 512  512  icon.png --out icon.iconset/icon_256x256@2x.png
-sips -z 512  512  icon.png --out icon.iconset/icon_512x512.png
-sips -z 1024 1024 icon.png --out icon.iconset/icon_512x512@2x.png
+sips -z 16   16   icon.png --out icon.iconset/icon_16x16.png    2>/dev/null
+sips -z 32   32   icon.png --out icon.iconset/icon_16x16@2x.png 2>/dev/null
+sips -z 32   32   icon.png --out icon.iconset/icon_32x32.png    2>/dev/null
+sips -z 64   64   icon.png --out icon.iconset/icon_32x32@2x.png 2>/dev/null
+sips -z 128  128  icon.png --out icon.iconset/icon_128x128.png  2>/dev/null
+sips -z 256  256  icon.png --out icon.iconset/icon_128x128@2x.png 2>/dev/null
+sips -z 256  256  icon.png --out icon.iconset/icon_256x256.png  2>/dev/null
+sips -z 512  512  icon.png --out icon.iconset/icon_256x256@2x.png 2>/dev/null
+sips -z 512  512  icon.png --out icon.iconset/icon_512x512.png  2>/dev/null
+sips -z 1024 1024 icon.png --out icon.iconset/icon_512x512@2x.png 2>/dev/null
 iconutil -c icns icon.iconset
 rm -rf icon.iconset icon.png
 
+# ── App bundle ─────────────────────────────────────────────────────────────
 echo "==> Creating $APP_NAME.app bundle..."
 APP_DIR="$APP_NAME.app"
 rm -rf "$APP_DIR"
@@ -62,22 +65,74 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-echo "==> Creating $APP_NAME.dmg..."
-STAGING=$(mktemp -d)
-cp -r "$APP_DIR" "$STAGING/"
-ln -s /Applications "$STAGING/Applications"
+# ── Ad-hoc code sign ───────────────────────────────────────────────────────
+# Prevents the "damaged and can't be opened" Gatekeeper error.
+echo "==> Code signing (ad-hoc)..."
+codesign --force --deep --sign - "$APP_DIR"
 
+# ── DMG ────────────────────────────────────────────────────────────────────
+echo "==> Generating DMG background..."
+swift generate_dmg_background.swift
+
+echo "==> Creating $APP_NAME.dmg..."
+
+RW_DMG="/tmp/WeatherWidget-rw-$$.dmg"
+VOLUME="/Volumes/$APP_NAME"
+
+# Detach any leftover volume from a previous failed run
+hdiutil detach "$VOLUME" -quiet 2>/dev/null || true
+rm -f "$RW_DMG"
+
+# Cleanup on exit (success or failure)
+trap 'hdiutil detach "$VOLUME" -quiet 2>/dev/null; rm -f "$RW_DMG" dmg_background.png' EXIT
+
+# Create a fresh read-write HFS+ image
+hdiutil create -volname "$APP_NAME" -size 60m -fs "HFS+" -type UDIF "$RW_DMG"
+
+# Mount read-write
+hdiutil attach -readwrite -noverify -noautoopen "$RW_DMG" > /dev/null
+
+# Populate
+ditto "$APP_DIR"    "$VOLUME/$APP_DIR"
+ln -s /Applications "$VOLUME/Applications"
+mkdir               "$VOLUME/.background"
+cp dmg_background.png "$VOLUME/.background/background.png"
+
+# Style: background, icon size/positions, window bounds
+osascript <<APPLESCRIPT
+tell application "Finder"
+    tell disk "$APP_NAME"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set the bounds of container window to {400, 100, 1000, 500}
+        set theViewOptions to the icon view options of container window
+        set arrangement of theViewOptions to not arranged
+        set icon size of theViewOptions to 128
+        set background picture of theViewOptions to file ".background:background.png"
+        set position of item "$APP_NAME.app" to {175, 175}
+        set position of item "Applications"   to {425, 175}
+        close
+        open
+        update without registering applications
+        delay 2
+        close
+    end tell
+end tell
+APPLESCRIPT
+
+sync
+hdiutil detach "$VOLUME" -quiet
+trap - EXIT   # clear trap; manual cleanup below
+
+# Convert to compressed, read-only DMG
 DMG_NAME="$APP_NAME.dmg"
 rm -f "$DMG_NAME"
-hdiutil create \
-    -volname "$APP_NAME" \
-    -srcfolder "$STAGING" \
-    -ov \
-    -format UDZO \
-    -imagekey zlib-level=9 \
-    "$DMG_NAME"
+hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_NAME"
 
-rm -rf "$STAGING"
+# Cleanup
+rm -f "$RW_DMG" dmg_background.png
 
 echo ""
 echo "Done!"
