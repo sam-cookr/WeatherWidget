@@ -34,9 +34,19 @@ Open settings by clicking the ⚙ gear icon in the widget header.
 
 Requires Xcode 15+ and macOS 13+.
 
+### Create a macOS App Bundle
+
+To create a double-clickable `.app` bundle that can be moved to `/Applications`:
+
 ```bash
-git clone https://github.com/samcookeio/WeatherWidget.git
-cd WeatherWidget
+./build_app.sh
+```
+
+This will create `WeatherWidget.app` in the current directory. You can then move it to your `/Applications` folder.
+
+### Running from Terminal (Development)
+
+```bash
 swift build -c release
 .build/release/WeatherWidget
 ```

@@ -1,6 +1,26 @@
 import SwiftUI
 import AppKit
 
+// MARK: - NSVisualEffectView wrapper (real compositor transparency)
+
+struct VisualEffectView: NSViewRepresentable {
+    var material: NSVisualEffectView.Material
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material     = material
+        v.blendingMode = blendingMode
+        v.state        = .active
+        v.isEmphasized = false
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {
+        v.material     = material
+        v.blendingMode = blendingMode
+    }
+}
+
 // MARK: - Root View
 
 struct WeatherView: View {
@@ -10,10 +30,7 @@ struct WeatherView: View {
 
     var body: some View {
         ZStack {
-            LiquidGlassBackground(
-                blurredWallpaper: viewModel.glassBackground,
-                intensity: settings.glassIntensity.overlayScale
-            )
+            LiquidGlassBackground(intensity: settings.glassIntensity.overlayScale)
 
             Group {
                 if showSettings {
@@ -101,91 +118,81 @@ struct WeatherView: View {
 // MARK: - Liquid Glass Background
 
 struct LiquidGlassBackground: View {
-    var blurredWallpaper: NSImage?
     var intensity: Double = 1.0
+
+    // Map intensity to NSVisualEffectView material
+    private var material: NSVisualEffectView.Material {
+        if intensity < 0.8 { return .underWindowBackground }
+        if intensity > 1.2 { return .popover }
+        return .hudWindow
+    }
 
     var body: some View {
         ZStack {
-            // Base: refracted, distorted wallpaper
-            if let img = blurredWallpaper {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                LinearGradient(
-                    colors: [Color(white: 0.14), Color(white: 0.08)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
+            // ── Layer 1: Real compositor transparency ──
+            // NSVisualEffectView with .behindWindow samples the actual
+            // screen content behind the widget window in real-time.
+            VisualEffectView(material: material)
 
-            // Chromatic aberration: warm red-orange at top-left
+            // ── Layer 2: Chromatic aberration — warm tint at top-left ──
+            // Simulates different wavelengths refracting at different angles
             LinearGradient(
                 stops: [
-                    .init(color: Color(red: 1.0, green: 0.45, blue: 0.25).opacity(0.07 * intensity), location: 0),
+                    .init(color: Color(red: 1.0, green: 0.45, blue: 0.25).opacity(0.09 * intensity), location: 0),
                     .init(color: .clear, location: 0.4),
                 ],
-                startPoint: .topLeading,
-                endPoint: .center
+                startPoint: .topLeading, endPoint: .center
             )
             .blendMode(.screen)
 
-            // Chromatic aberration: cool blue at bottom-right
+            // ── Layer 3: Chromatic aberration — cool tint at bottom-right ──
             LinearGradient(
                 stops: [
-                    .init(color: Color(red: 0.3, green: 0.45, blue: 1.0).opacity(0.06 * intensity), location: 0),
+                    .init(color: Color(red: 0.3, green: 0.45, blue: 1.0).opacity(0.07 * intensity), location: 0),
                     .init(color: .clear, location: 0.4),
                 ],
-                startPoint: .bottomTrailing,
-                endPoint: .center
+                startPoint: .bottomTrailing, endPoint: .center
             )
             .blendMode(.screen)
 
-            // Caustic glow: concentrated light from upper-left
+            // ── Layer 4: Caustic glow — concentrated light from upper-left ──
             RadialGradient(
                 stops: [
-                    .init(color: .white.opacity(0.20 * intensity), location: 0.0),
-                    .init(color: .white.opacity(0.07 * intensity), location: 0.4),
+                    .init(color: .white.opacity(0.22 * intensity), location: 0.0),
+                    .init(color: .white.opacity(0.08 * intensity), location: 0.4),
                     .init(color: .clear,                           location: 1.0),
                 ],
                 center: UnitPoint(x: 0.22, y: 0.12),
-                startRadius: 0,
-                endRadius: 260
+                startRadius: 0, endRadius: 260
             )
 
-            // Frosted tint
-            Color.white.opacity(0.04 * intensity)
-
-            // Primary specular: bright rim at top, fades quickly
+            // ── Layer 5: Primary specular — bright rim at very top ──
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.55 * intensity), location: 0.00),
-                    .init(color: .white.opacity(0.18 * intensity), location: 0.04),
-                    .init(color: .white.opacity(0.03 * intensity), location: 0.10),
+                    .init(color: .white.opacity(0.60 * intensity), location: 0.00),
+                    .init(color: .white.opacity(0.20 * intensity), location: 0.04),
+                    .init(color: .white.opacity(0.04 * intensity), location: 0.10),
                     .init(color: .clear,                           location: 0.18),
                 ],
-                startPoint: .top,
-                endPoint: .bottom
+                startPoint: .top, endPoint: .bottom
             )
 
-            // Secondary specular: left rim (side light)
+            // ── Layer 6: Left rim specular ──
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.08 * intensity), location: 0.0),
-                    .init(color: .clear,                           location: 0.09),
+                    .init(color: .white.opacity(0.09 * intensity), location: 0.0),
+                    .init(color: .clear,                           location: 0.08),
                 ],
-                startPoint: .leading,
-                endPoint: .trailing
+                startPoint: .leading, endPoint: .trailing
             )
 
-            // Bottom bounce light: subtle warm rim at base
+            // ── Layer 7: Bottom bounce light ──
             LinearGradient(
                 stops: [
                     .init(color: .clear,                           location: 0.88),
-                    .init(color: .white.opacity(0.07 * intensity), location: 1.00),
+                    .init(color: .white.opacity(0.08 * intensity), location: 1.00),
                 ],
-                startPoint: .top,
-                endPoint: .bottom
+                startPoint: .top, endPoint: .bottom
             )
         }
     }
