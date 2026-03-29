@@ -13,7 +13,7 @@ Grab the latest **WeatherWidget.dmg** from the [Releases](https://github.com/sam
 3. Launch it — the widget appears in the top-right corner
 4. Lock your screen to see it on the lock screen
 
-> **Gatekeeper note** — the app is unsigned. On first launch, right-click → Open, then confirm.
+> **Gatekeeper note** — the app is ad-hoc signed (no Apple Developer account). On first launch, right-click → **Open**, then click Open in the dialog. macOS will remember the choice.
 
 ## Features
 
