@@ -21,6 +21,131 @@ struct VisualEffectView: NSViewRepresentable {
     }
 }
 
+// MARK: - Runtime Glass Adapter
+
+struct AdaptiveGlassView: NSViewRepresentable {
+    var material: NSVisualEffectView.Material
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+    var cornerRadius: CGFloat = 28
+
+    func makeNSView(context: Context) -> NSView {
+        let host = NSView()
+        host.wantsLayer = true
+        host.layer?.isOpaque = false
+        host.layer?.cornerCurve = .continuous
+        host.layer?.cornerRadius = cornerRadius
+        host.layer?.masksToBounds = true
+
+        if let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
+            let glass = glassClass.init(frame: .zero)
+            glass.frame = host.bounds
+            glass.autoresizingMask = [.width, .height]
+            applyRuntimeGlassSettings(to: glass)
+            host.addSubview(glass)
+        } else {
+            let fallback = NSVisualEffectView(frame: host.bounds)
+            fallback.autoresizingMask = [.width, .height]
+            fallback.material = material
+            fallback.blendingMode = blendingMode
+            fallback.state = .active
+            fallback.isEmphasized = false
+            host.addSubview(fallback)
+        }
+        return host
+    }
+
+    func updateNSView(_ host: NSView, context: Context) {
+        guard let glassOrFallback = host.subviews.first else { return }
+        applyRuntimeGlassSettings(to: glassOrFallback)
+        if let fallback = glassOrFallback as? NSVisualEffectView {
+            fallback.material = material
+            fallback.blendingMode = blendingMode
+        }
+        host.layer?.cornerRadius = cornerRadius
+        host.layer?.masksToBounds = true
+    }
+
+    private func applyRuntimeGlassSettings(to view: NSView) {
+        let setState = NSSelectorFromString("setState:")
+        if view.responds(to: setState) {
+            (view as NSObject).setValue(NSVisualEffectView.State.active.rawValue, forKey: "state")
+        }
+        let setBlending = NSSelectorFromString("setBlendingMode:")
+        if view.responds(to: setBlending) {
+            (view as NSObject).setValue(blendingMode.rawValue, forKey: "blendingMode")
+        }
+        let setMaterial = NSSelectorFromString("setMaterial:")
+        if view.responds(to: setMaterial) {
+            (view as NSObject).setValue(material.rawValue, forKey: "material")
+        }
+        let setEmphasized = NSSelectorFromString("setEmphasized:")
+        if view.responds(to: setEmphasized) {
+            (view as NSObject).setValue(false, forKey: "emphasized")
+        }
+
+        // NSGlassEffectView runtime tuning (only when supported by selector).
+        let setStyle = NSSelectorFromString("setStyle:")
+        if view.responds(to: setStyle) {
+            (view as NSObject).setValue(1, forKey: "style")
+        }
+        let setVariant = NSSelectorFromString("setVariant:")
+        if view.responds(to: setVariant) {
+            (view as NSObject).setValue(1, forKey: "variant")
+        }
+        let setScrimState = NSSelectorFromString("set_scrimState:")
+        if view.responds(to: setScrimState) {
+            (view as NSObject).setValue(0, forKey: "scrimState")
+        }
+        let setSubduedState = NSSelectorFromString("set_subduedState:")
+        if view.responds(to: setSubduedState) {
+            (view as NSObject).setValue(0, forKey: "subduedState")
+        }
+        let setContentLensing = NSSelectorFromString("set_contentLensing:")
+        if view.responds(to: setContentLensing) {
+            (view as NSObject).setValue(1, forKey: "contentLensing")
+        }
+        let setReducedShadow = NSSelectorFromString("set_useReducedShadowRadius:")
+        if view.responds(to: setReducedShadow) {
+            (view as NSObject).setValue(true, forKey: "useReducedShadowRadius")
+        }
+        let setTint = NSSelectorFromString("setTintColor:")
+        if view.responds(to: setTint) {
+            (view as NSObject).setValue(NSColor.white.withAlphaComponent(0.01), forKey: "tintColor")
+        }
+        let setCornerRadius = NSSelectorFromString("setCornerRadius:")
+        if view.responds(to: setCornerRadius) {
+            (view as NSObject).setValue(cornerRadius, forKey: "cornerRadius")
+        }
+        let setClipsToBounds = NSSelectorFromString("setClipsToBounds:")
+        if view.responds(to: setClipsToBounds) {
+            (view as NSObject).setValue(true, forKey: "clipsToBounds")
+        }
+    }
+}
+
+struct LockScreenGlassProbeView: View {
+    var body: some View {
+        ZStack {
+            LiquidGlassBackground(intensity: 1.0)
+
+            VStack(spacing: 8) {
+                Text("Glass Probe")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.92))
+                Text("Lock-screen level + glass only")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.62))
+            }
+        }
+        .frame(width: 280, height: 180)
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(.white.opacity(0.24), lineWidth: 0.8)
+        )
+    }
+}
+
 // MARK: - Root View
 
 struct WeatherView: View {
@@ -72,13 +197,13 @@ struct WeatherView: View {
             .stroke(
                 AngularGradient(
                     stops: [
-                        .init(color: .white.opacity(0.88), location: 0.00),
-                        .init(color: .white.opacity(0.50), location: 0.10),
-                        .init(color: .white.opacity(0.12), location: 0.30),
-                        .init(color: .white.opacity(0.04), location: 0.50),
-                        .init(color: .white.opacity(0.10), location: 0.70),
-                        .init(color: .white.opacity(0.42), location: 0.90),
-                        .init(color: .white.opacity(0.88), location: 1.00),
+                        .init(color: .white.opacity(0.42), location: 0.00),
+                        .init(color: .white.opacity(0.18), location: 0.10),
+                        .init(color: .white.opacity(0.05), location: 0.30),
+                        .init(color: .white.opacity(0.01), location: 0.50),
+                        .init(color: .white.opacity(0.04), location: 0.70),
+                        .init(color: .white.opacity(0.16), location: 0.90),
+                        .init(color: .white.opacity(0.42), location: 1.00),
                     ],
                     center: .center,
                     startAngle: .degrees(-90),
@@ -122,75 +247,65 @@ struct LiquidGlassBackground: View {
 
     // Map intensity to NSVisualEffectView material
     private var material: NSVisualEffectView.Material {
-        if intensity < 0.8 { return .underWindowBackground }
-        if intensity > 1.2 { return .popover }
-        return .hudWindow
+        if intensity < 0.8 { return .hudWindow }
+        if intensity > 1.2 { return .menu }
+        return .popover
     }
 
     var body: some View {
         ZStack {
-            // ── Layer 1: Real compositor transparency ──
-            // NSVisualEffectView with .behindWindow samples the actual
-            // screen content behind the widget window in real-time.
-            VisualEffectView(material: material)
+            // ── Layer 1: Native compositor glass (no Screen Recording permission) ──
+            AdaptiveGlassView(material: material, cornerRadius: 28)
+                .opacity(1.0)
 
-            // ── Layer 2: Chromatic aberration — warm tint at top-left ──
-            // Simulates different wavelengths refracting at different angles
+            // ── Layer 2: Micro-tint to match lock-screen-style glass depth ──
             LinearGradient(
                 stops: [
-                    .init(color: Color(red: 1.0, green: 0.45, blue: 0.25).opacity(0.09 * intensity), location: 0),
-                    .init(color: .clear, location: 0.4),
+                    .init(color: .white.opacity(0.03 * intensity), location: 0.0),
+                    .init(color: .white.opacity(0.01 * intensity), location: 0.25),
+                    .init(color: .clear,                           location: 0.6),
                 ],
-                startPoint: .topLeading, endPoint: .center
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
-            .blendMode(.screen)
 
-            // ── Layer 3: Chromatic aberration — cool tint at bottom-right ──
-            LinearGradient(
-                stops: [
-                    .init(color: Color(red: 0.3, green: 0.45, blue: 1.0).opacity(0.07 * intensity), location: 0),
-                    .init(color: .clear, location: 0.4),
-                ],
-                startPoint: .bottomTrailing, endPoint: .center
-            )
-            .blendMode(.screen)
-
-            // ── Layer 4: Caustic glow — concentrated light from upper-left ──
+            // ── Layer 3: Soft caustic glow, minimal haze ──
             RadialGradient(
                 stops: [
-                    .init(color: .white.opacity(0.22 * intensity), location: 0.0),
-                    .init(color: .white.opacity(0.08 * intensity), location: 0.4),
+                    .init(color: .white.opacity(0.022 * intensity), location: 0.0),
+                    .init(color: .white.opacity(0.004 * intensity), location: 0.4),
                     .init(color: .clear,                           location: 1.0),
                 ],
                 center: UnitPoint(x: 0.22, y: 0.12),
                 startRadius: 0, endRadius: 260
             )
 
-            // ── Layer 5: Primary specular — bright rim at very top ──
+            // ── Layer 4: Primary specular — rim highlight ──
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.60 * intensity), location: 0.00),
-                    .init(color: .white.opacity(0.20 * intensity), location: 0.04),
-                    .init(color: .white.opacity(0.04 * intensity), location: 0.10),
+                    .init(color: .white.opacity(0.10 * intensity), location: 0.00),
+                    .init(color: .white.opacity(0.018 * intensity), location: 0.05),
+                    .init(color: .white.opacity(0.0015 * intensity), location: 0.10),
                     .init(color: .clear,                           location: 0.18),
                 ],
                 startPoint: .top, endPoint: .bottom
             )
 
-            // ── Layer 6: Left rim specular ──
+            // ── Layer 5: Left rim specular ──
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.09 * intensity), location: 0.0),
+                    .init(color: .white.opacity(0.015 * intensity), location: 0.0),
+                    .init(color: .white.opacity(0.003 * intensity), location: 0.04),
                     .init(color: .clear,                           location: 0.08),
                 ],
                 startPoint: .leading, endPoint: .trailing
             )
 
-            // ── Layer 7: Bottom bounce light ──
+            // ── Layer 6: Bottom bounce light ──
             LinearGradient(
                 stops: [
                     .init(color: .clear,                           location: 0.88),
-                    .init(color: .white.opacity(0.08 * intensity), location: 1.00),
+                    .init(color: .white.opacity(0.006 * intensity), location: 1.00),
                 ],
                 startPoint: .top, endPoint: .bottom
             )
@@ -302,7 +417,7 @@ struct WeatherContent: View {
                 .frame(maxWidth: .infinity)
 
                 Rectangle()
-                    .fill(.white.opacity(0.12))
+                    .fill(.white.opacity(0.06))
                     .frame(width: 0.5, height: 20)
 
                 HStack(spacing: 6) {
@@ -328,7 +443,7 @@ struct WeatherContent: View {
             ForEach(Array(items.enumerated()), id: \.offset) { i, item in
                 if i > 0 {
                     Rectangle()
-                        .fill(.white.opacity(0.12))
+                        .fill(.white.opacity(0.06))
                         .frame(width: 0.5, height: 26)
                 }
                 DetailCell(icon: item.0, label: item.1, value: item.2)
@@ -346,7 +461,7 @@ struct WeatherContent: View {
                     LinearGradient(
                         stops: [
                             .init(color: .white.opacity(0.14), location: 0),
-                            .init(color: .white.opacity(0.07), location: 1),
+                            .init(color: .white.opacity(0.04), location: 1),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -358,7 +473,7 @@ struct WeatherContent: View {
                     LinearGradient(
                         stops: [
                             .init(color: .white.opacity(0.22), location: 0),
-                            .init(color: .clear,               location: 0.35),
+                            .init(color: .clear,               location: 0.55),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -369,7 +484,7 @@ struct WeatherContent: View {
                     LinearGradient(
                         stops: [
                             .init(color: .white.opacity(0.38), location: 0),
-                            .init(color: .white.opacity(0.08), location: 1),
+                            .init(color: .white.opacity(0.05), location: 1),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
