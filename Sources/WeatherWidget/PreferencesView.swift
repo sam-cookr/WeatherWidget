@@ -126,6 +126,24 @@ struct GeneralPane: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
             }
+
+            // ── Glass Style ───────────────────────────────────────────────
+            Section {
+                Picker("Style", selection: $settings.glassStyle) {
+                    ForEach(GlassStyle.allCases, id: \.self) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            } header: {
+                Text("Widget Glass Style")
+            } footer: {
+                Text(settings.glassStyle == .frosted
+                     ? "Frosted: native compositor blur — opaque on any background."
+                     : "Clear: transparent with light reflections — wallpaper shows through.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .onAppear {

@@ -52,6 +52,16 @@ enum WidgetPosition: String, CaseIterable, SettingOption {
     }
 }
 
+enum GlassStyle: String, CaseIterable, SettingOption {
+    case frosted, clear
+    var label: String {
+        switch self {
+        case .frosted: return "Frosted"
+        case .clear:   return "Clear"
+        }
+    }
+}
+
 enum RefreshInterval: String, CaseIterable, SettingOption {
     case five, fifteen, thirty, hour
     var label: String {
@@ -88,19 +98,24 @@ class SettingsStore: ObservableObject {
     @Published var refreshInterval: RefreshInterval {
         didSet { UserDefaults.standard.set(refreshInterval.rawValue, forKey: Keys.refresh) }
     }
+    @Published var glassStyle: GlassStyle {
+        didSet { UserDefaults.standard.set(glassStyle.rawValue, forKey: Keys.glassStyle) }
+    }
 
     private enum Keys {
-        static let tempUnit = "ww.tempUnit"
-        static let windUnit = "ww.windUnit"
-        static let position = "ww.position"
-        static let refresh  = "ww.refresh"
+        static let tempUnit   = "ww.tempUnit"
+        static let windUnit   = "ww.windUnit"
+        static let position   = "ww.position"
+        static let refresh    = "ww.refresh"
+        static let glassStyle = "ww.glassStyle"
     }
 
     init() {
         let ud = UserDefaults.standard
-        tempUnit        = TempUnit(rawValue:       ud.string(forKey: Keys.tempUnit) ?? "") ?? .system
-        windUnit        = WindUnit(rawValue:        ud.string(forKey: Keys.windUnit) ?? "") ?? .system
-        position        = WidgetPosition(rawValue:  ud.string(forKey: Keys.position) ?? "") ?? .topRight
-        refreshInterval = RefreshInterval(rawValue: ud.string(forKey: Keys.refresh)  ?? "") ?? .fifteen
+        tempUnit        = TempUnit(rawValue:       ud.string(forKey: Keys.tempUnit)   ?? "") ?? .system
+        windUnit        = WindUnit(rawValue:        ud.string(forKey: Keys.windUnit)   ?? "") ?? .system
+        position        = WidgetPosition(rawValue:  ud.string(forKey: Keys.position)   ?? "") ?? .topRight
+        refreshInterval = RefreshInterval(rawValue: ud.string(forKey: Keys.refresh)    ?? "") ?? .fifteen
+        glassStyle      = GlassStyle(rawValue:      ud.string(forKey: Keys.glassStyle) ?? "") ?? .frosted
     }
 }
