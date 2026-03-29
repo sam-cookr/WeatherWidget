@@ -68,7 +68,7 @@ struct OnboardingView: View {
             .padding(.vertical, 20)
             .background(.bar)
         }
-        .frame(width: 540, height: 460)
+        .frame(width: 540, height: 500)
     }
 
     private func stepTransition(forward: Bool) -> AnyTransition {
@@ -171,8 +171,8 @@ private struct SetupStep: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
-            .padding(.top, 36)
-            .padding(.bottom, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
 
             Form {
                 Section("Widget Position") {

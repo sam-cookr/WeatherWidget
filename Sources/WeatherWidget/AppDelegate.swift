@@ -112,7 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             win.titleVisibility = .hidden
             win.titlebarAppearsTransparent = true
             win.isMovableByWindowBackground = true
-            win.setContentSize(NSSize(width: 540, height: 460))
+            win.setContentSize(NSSize(width: 540, height: 500))
             win.center()
             win.isReleasedWhenClosed = false
 
@@ -153,7 +153,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func screenObscured() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, let window = self.floatingWindow, let screen = NSScreen.main else { return }
             window.makeKeyAndOrderFront(nil)
             window.setFrameOrigin(self.origin(for: self.settings.position,

@@ -52,14 +52,14 @@ private struct FrostedGlassBackground: View {
 private struct ClearGlassBackground: View {
     var body: some View {
         ZStack {
-            // Very thin dark tint — just enough contrast for white text
-            Color.black.opacity(0.08)
+            // Barely-there tint — only enough to lift white text off any wallpaper
+            Color.black.opacity(0.04)
 
-            // Subtle body gradient — slightly darker at bottom aids readability
+            // Very faint body gradient — imperceptible except on pure-white backgrounds
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.04), location: 0),
-                    .init(color: .black.opacity(0.14), location: 1),
+                    .init(color: .white.opacity(0.02), location: 0),
+                    .init(color: .black.opacity(0.08), location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -68,9 +68,9 @@ private struct ClearGlassBackground: View {
             // Primary specular — bright band near top simulates light hitting glass
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.38), location: 0),
-                    .init(color: .white.opacity(0.14), location: 0.07),
-                    .init(color: .clear,               location: 0.18),
+                    .init(color: .white.opacity(0.32), location: 0),
+                    .init(color: .white.opacity(0.10), location: 0.06),
+                    .init(color: .clear,               location: 0.16),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -79,9 +79,9 @@ private struct ClearGlassBackground: View {
             // Prismatic edge shimmer — very thin rainbow tint at the top lip
             LinearGradient(
                 stops: [
-                    .init(color: Color(hue: 0.58, saturation: 0.35, brightness: 1).opacity(0.10), location: 0.00),
-                    .init(color: Color(hue: 0.38, saturation: 0.25, brightness: 1).opacity(0.07), location: 0.025),
-                    .init(color: .clear,                                                           location: 0.055),
+                    .init(color: Color(hue: 0.58, saturation: 0.3, brightness: 1).opacity(0.08), location: 0.00),
+                    .init(color: Color(hue: 0.38, saturation: 0.2, brightness: 1).opacity(0.05), location: 0.025),
+                    .init(color: .clear,                                                          location: 0.05),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -90,8 +90,8 @@ private struct ClearGlassBackground: View {
             // Bottom inner reflection — faint upward lift from the base edge
             LinearGradient(
                 stops: [
-                    .init(color: .clear,               location: 0.80),
-                    .init(color: .white.opacity(0.06), location: 1.00),
+                    .init(color: .clear,               location: 0.82),
+                    .init(color: .white.opacity(0.05), location: 1.00),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -252,33 +252,30 @@ struct WeatherContent: View {
 
             Spacer(minLength: 12)
 
-            // ── Detail rows ───────────────────────────────────────────────────
-            detailRow([
-                ("thermometer.medium", "Feels Like", weather.feelsLikeString),
-                ("humidity",           "Humidity",   "\(weather.humidity)%"),
-                ("wind",               "Wind",       weather.windString),
-            ])
-
-            Spacer().frame(height: 8)
-
-            detailRow([
-                ("sun.max.fill",          "UV Index", weather.uvString),
-                ("cloud.rain",            "Rain",     weather.precipString),
-                ("thermometer.snowflake", "Dew Pt",   weather.dewPointString),
-            ])
-
-            Spacer().frame(height: 8)
-
-            // ── Sunrise / Sunset ──────────────────────────────────────────────
-            HStack(spacing: 0) {
-                sunriseSunsetCell(icon: "sunrise.fill", time: weather.sunrise)
-                Rectangle()
-                    .fill(.white.opacity(0.08))
-                    .frame(width: 0.5, height: 20)
-                sunriseSunsetCell(icon: "sunset.fill", time: weather.sunset)
+            // ── Detail panel — all rows on one shared background ──────────────
+            VStack(spacing: 0) {
+                detailRow([
+                    ("thermometer.medium", "Feels Like", weather.feelsLikeString),
+                    ("humidity",           "Humidity",   "\(weather.humidity)%"),
+                    ("wind",               "Wind",       weather.windString),
+                ])
+                rowDivider
+                detailRow([
+                    ("sun.max.fill",          "UV Index", weather.uvString),
+                    ("cloud.rain",            "Rain",     weather.precipString),
+                    ("thermometer.snowflake", "Dew Pt",   weather.dewPointString),
+                ])
+                rowDivider
+                HStack(spacing: 0) {
+                    sunriseSunsetCell(icon: "sunrise.fill", time: weather.sunrise)
+                    Rectangle()
+                        .fill(.white.opacity(0.08))
+                        .frame(width: 0.5, height: 20)
+                    sunriseSunsetCell(icon: "sunset.fill", time: weather.sunset)
+                }
+                .padding(.vertical, 10)
             }
-            .padding(.vertical, 10)
-            .background(pillBackground)
+            .background(unifiedPanelBackground)
             .padding(.horizontal, 12)
 
             Spacer().frame(height: 14)
@@ -299,8 +296,13 @@ struct WeatherContent: View {
             }
         }
         .padding(.vertical, 10)
-        .background(pillBackground)
-        .padding(.horizontal, 12)
+    }
+
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.07))
+            .frame(height: 0.5)
+            .padding(.horizontal, 12)
     }
 
     private func sunriseSunsetCell(icon: String, time: String) -> some View {
@@ -315,16 +317,16 @@ struct WeatherContent: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var pillBackground: some View {
+    private var unifiedPanelBackground: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.white.opacity(0.07))
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(0.10), location: 0),
-                            .init(color: .clear, location: 0.5),
+                            .init(color: .white.opacity(0.08), location: 0),
+                            .init(color: .clear, location: 0.4),
                         ],
                         startPoint: .top, endPoint: .bottom
                     )
@@ -333,8 +335,8 @@ struct WeatherContent: View {
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(0.28), location: 0),
-                            .init(color: .white.opacity(0.08), location: 1),
+                            .init(color: .white.opacity(0.22), location: 0),
+                            .init(color: .white.opacity(0.07), location: 1),
                         ],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ),
