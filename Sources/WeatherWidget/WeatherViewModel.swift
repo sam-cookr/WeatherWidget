@@ -1,7 +1,5 @@
 import Foundation
 import AppKit
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import Combine
 
 // MARK: - Models
@@ -88,7 +86,6 @@ class WeatherViewModel: ObservableObject {
     @Published var weather: WeatherData?
     @Published var isLoading = false
     @Published var errorMessage: String?
-    @Published var glassBackground: NSImage?
 
     private let settings: SettingsStore
     private var cancellables = Set<AnyCancellable>()
@@ -223,95 +220,6 @@ class WeatherViewModel: ObservableObject {
         )
     }
 
-    // MARK: - Wallpaper Glass
-
-    func generateGlassBackground(windowFrame: NSRect) {
-        guard let screen = NSScreen.main,
-              let url = NSWorkspace.shared.desktopImageURL(for: screen),
-              let wallpaper = NSImage(contentsOf: url)
-        else { return }
-
-        glassBackground = Self.liquidGlassCrop(
-            of: wallpaper,
-            windowFrame: windowFrame,
-            screenFrame: screen.frame,
-            blurRadius:       settings.glassIntensity.blurRadius,
-            distortionScale:  settings.glassIntensity.distortionScale
-        )
-    }
-
-    private static func liquidGlassCrop(
-        of wallpaper: NSImage,
-        windowFrame: NSRect,
-        screenFrame: NSRect,
-        blurRadius: CGFloat = 8,
-        distortionScale: Float = -0.45
-    ) -> NSImage? {
-        guard let tiff   = wallpaper.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let ciImage = CIImage(bitmapImageRep: bitmap)
-        else { return nil }
-
-        let imgW = ciImage.extent.width
-        let imgH = ciImage.extent.height
-        let scaleX = imgW / screenFrame.width
-        let scaleY = imgH / screenFrame.height
-
-        let cropRect = CGRect(
-            x: (windowFrame.minX - screenFrame.minX) * scaleX,
-            y: (windowFrame.minY - screenFrame.minY) * scaleY,
-            width:  windowFrame.width  * scaleX,
-            height: windowFrame.height * scaleY
-        )
-
-        // Magnification — crop a larger area so background appears zoomed (lens effect)
-        let mag: CGFloat = 1.5
-        let magRect = cropRect.insetBy(
-            dx: -cropRect.width  * (mag - 1) / 2,
-            dy: -cropRect.height * (mag - 1) / 2
-        ).intersection(ciImage.extent)
-
-        let pad = blurRadius * max(scaleX, scaleY) * 2.5
-        let expanded = magRect.insetBy(dx: -pad, dy: -pad).intersection(ciImage.extent)
-        var output = ciImage.cropped(to: expanded)
-
-        // Gaussian blur
-        let blur = CIFilter.gaussianBlur()
-        blur.inputImage = output
-        blur.radius = Float(blurRadius * max(scaleX, scaleY))
-        guard let blurred = blur.outputImage else { return nil }
-        output = blurred
-
-        // Zoom transform
-        let cx = cropRect.midX
-        let cy = cropRect.midY
-        let zoomTransform = CGAffineTransform(translationX: cx, y: cy)
-            .scaledBy(x: mag, y: mag)
-            .translatedBy(x: -cx, y: -cy)
-        output = output.transformed(by: zoomTransform)
-
-        // Barrel distortion — lens refraction
-        let distortion = CIFilter.bumpDistortion()
-        distortion.inputImage = output
-        distortion.center = CGPoint(x: cropRect.midX, y: cropRect.midY)
-        distortion.radius = Float(max(cropRect.width, cropRect.height) * 1.1)
-        distortion.scale  = distortionScale
-        if let distorted = distortion.outputImage { output = distorted }
-
-        // Color boost
-        let color = CIFilter.colorControls()
-        color.inputImage = output
-        color.saturation = 1.45
-        color.brightness = 0.04
-        color.contrast   = 1.06
-        guard let colored = color.outputImage else { return nil }
-        output = colored
-
-        output = output.cropped(to: cropRect)
-        let ctx = CIContext()
-        guard let cg = ctx.createCGImage(output, from: cropRect) else { return nil }
-        return NSImage(cgImage: cg, size: windowFrame.size)
-    }
 
     // MARK: - Helpers
 
