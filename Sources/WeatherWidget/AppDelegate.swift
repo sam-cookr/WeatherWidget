@@ -5,20 +5,127 @@ import Combine
 import Darwin
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+
+    // MARK: - Properties
+
     var floatingWindow: NSWindow?
     var viewModel: WeatherViewModel?
     let settings = SettingsStore()
+
+    private var statusItem: NSStatusItem?
+    private var preferencesWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
 
+    // MARK: - Launch
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.prohibited)
+        // .accessory = no Dock icon, no Cmd-Tab entry; status item is the only UI entry point
+        NSApp.setActivationPolicy(.accessory)
+        setupMenuBar()
         setupFloatingWindow()
         registerScreenNotifications()
         observeSettings()
+
+        if !UserDefaults.standard.bool(forKey: "ww.onboardingComplete") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.openOnboarding() }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         DistributedNotificationCenter.default().removeObserver(self)
+    }
+
+    // MARK: - Menu Bar
+
+    private func setupMenuBar() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        guard let button = statusItem?.button else { return }
+
+        let cfg = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        button.image = NSImage(
+            systemSymbolName: "cloud.sun.fill",
+            accessibilityDescription: "WeatherWidget"
+        )?.withSymbolConfiguration(cfg)
+        button.image?.isTemplate = true
+
+        let menu = NSMenu()
+
+        let settingsItem = NSMenuItem(
+            title: "Settings…",
+            action: #selector(openPreferences),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: "Quit WeatherWidget",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        menu.addItem(quitItem)
+
+        statusItem?.menu = menu
+    }
+
+    // MARK: - Preferences Window
+
+    @objc func openPreferences() {
+        if preferencesWindow == nil {
+            let view = PreferencesView()
+                .environmentObject(settings)
+            let vc = NSHostingController(rootView: view)
+            let win = NSWindow(contentViewController: vc)
+            win.title = "WeatherWidget"
+            win.styleMask = [.titled, .closable, .miniaturizable]
+            win.setContentSize(NSSize(width: 720, height: 480))
+            win.center()
+            win.isReleasedWhenClosed = false
+            win.minSize = NSSize(width: 620, height: 400)
+
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: win,
+                queue: .main
+            ) { [weak self] _ in self?.preferencesWindow = nil }
+
+            preferencesWindow = win
+        }
+        preferencesWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - Onboarding Window
+
+    func openOnboarding() {
+        if onboardingWindow == nil {
+            let view = OnboardingView {
+                self.onboardingWindow?.close()
+            }
+            .environmentObject(settings)
+            let vc = NSHostingController(rootView: view)
+            let win = NSWindow(contentViewController: vc)
+            win.styleMask = [.titled, .closable, .fullSizeContentView]
+            win.titleVisibility = .hidden
+            win.titlebarAppearsTransparent = true
+            win.isMovableByWindowBackground = true
+            win.setContentSize(NSSize(width: 540, height: 460))
+            win.center()
+            win.isReleasedWhenClosed = false
+
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: win,
+                queue: .main
+            ) { [weak self] _ in self?.onboardingWindow = nil }
+
+            onboardingWindow = win
+        }
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Settings Observers
@@ -59,7 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         floatingWindow?.orderOut(nil)
     }
 
-    // MARK: - Floating Window
+    // MARK: - Floating Widget Window
 
     @MainActor private func setupFloatingWindow() {
         let vm = WeatherViewModel(settings: settings)
@@ -94,7 +201,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         delegateWindowToSkySpace(window)
         floatingWindow = window
 
-        // Delay placement so SkyLight's internal setup doesn't override us
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self, let w = self.floatingWindow, let screen = NSScreen.main else { return }
             w.setFrameOrigin(self.origin(for: self.settings.position,
@@ -113,11 +219,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func origin(for position: WidgetPosition, windowSize: CGSize, screen: NSScreen) -> NSPoint {
-        let f      = screen.frame   // use full frame so lock-screen and desktop positions match
+        let f = screen.frame
         let margin: CGFloat = 20
-        let w      = windowSize.width
-        let h      = windowSize.height
-
+        let w = windowSize.width
+        let h = windowSize.height
         switch position {
         case .topRight:    return NSPoint(x: f.maxX - w - margin, y: f.maxY - h - margin)
         case .topLeft:     return NSPoint(x: f.minX + margin,     y: f.maxY - h - margin)
@@ -139,14 +244,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         typealias AddWindows   = @convention(c) (Int32, Int32, CFArray, Int32) -> Int32
 
         guard
-            let lib      = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight", RTLD_NOW),
+            let lib       = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight", RTLD_NOW),
             let symConn   = dlsym(lib, "SLSMainConnectionID"),
             let symCreate = dlsym(lib, "SLSSpaceCreate"),
             let symLevel  = dlsym(lib, "SLSSpaceSetAbsoluteLevel"),
             let symShow   = dlsym(lib, "SLSShowSpaces"),
             let symAdd    = dlsym(lib, "SLSSpaceAddWindowsAndRemoveFromSpaces")
         else {
-            // Fallback to the SkyLightWindow package if private APIs are unavailable
             SkyLightOperator.shared.delegateWindow(window)
             return
         }
