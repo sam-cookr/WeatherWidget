@@ -47,21 +47,18 @@ private struct FrostedGlassBackground: View {
     }
 }
 
-/// Clear glass background — native compositor blur for edge distortion, minimal tint to stay "clear".
+/// Clear glass background — no blur, pure optical glass simulation via edge lighting.
 private struct ClearGlassBackground: View {
     var body: some View {
         ZStack {
-            // Native compositor glass — provides the edge blur/distortion like Apple's music widget
-            LockScreenGlassView()
+            // Barely-there tint — only enough to lift white text off any wallpaper
+            Color.black.opacity(0.04)
 
-            // Very light dark overlay — just enough to lift white text, keeps it clear vs frosted
-            Color.black.opacity(0.06)
-
-            // Very faint body gradient — barely perceptible depth
+            // Very faint body gradient — imperceptible except on pure-white backgrounds
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.03), location: 0),
-                    .init(color: .black.opacity(0.06), location: 1),
+                    .init(color: .white.opacity(0.02), location: 0),
+                    .init(color: .black.opacity(0.08), location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -70,20 +67,42 @@ private struct ClearGlassBackground: View {
             // Primary specular — bright band near top simulates light hitting glass
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0.32), location: 0),
-                    .init(color: .white.opacity(0.10), location: 0.06),
-                    .init(color: .clear,               location: 0.16),
+                    .init(color: .white.opacity(0.38), location: 0),
+                    .init(color: .white.opacity(0.12), location: 0.06),
+                    .init(color: .clear,               location: 0.18),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
 
-            // Prismatic edge shimmer — very thin rainbow tint at the top lip
+            // Left-edge refraction streak — simulates light bending through glass edge
             LinearGradient(
                 stops: [
-                    .init(color: Color(hue: 0.58, saturation: 0.3, brightness: 1).opacity(0.10), location: 0.00),
-                    .init(color: Color(hue: 0.38, saturation: 0.2, brightness: 1).opacity(0.06), location: 0.025),
-                    .init(color: .clear,                                                          location: 0.05),
+                    .init(color: .white.opacity(0.14), location: 0),
+                    .init(color: .white.opacity(0.04), location: 0.08),
+                    .init(color: .clear,               location: 0.20),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+
+            // Right-edge refraction streak
+            LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0.10), location: 0),
+                    .init(color: .white.opacity(0.03), location: 0.08),
+                    .init(color: .clear,               location: 0.20),
+                ],
+                startPoint: .trailing,
+                endPoint: .leading
+            )
+
+            // Prismatic edge shimmer — rainbow tint at the top lip
+            LinearGradient(
+                stops: [
+                    .init(color: Color(hue: 0.58, saturation: 0.4, brightness: 1).opacity(0.12), location: 0.00),
+                    .init(color: Color(hue: 0.38, saturation: 0.3, brightness: 1).opacity(0.07), location: 0.03),
+                    .init(color: .clear,                                                          location: 0.07),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -92,8 +111,8 @@ private struct ClearGlassBackground: View {
             // Bottom inner reflection — faint upward lift from the base edge
             LinearGradient(
                 stops: [
-                    .init(color: .clear,               location: 0.82),
-                    .init(color: .white.opacity(0.05), location: 1.00),
+                    .init(color: .clear,               location: 0.80),
+                    .init(color: .white.opacity(0.07), location: 1.00),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -153,23 +172,25 @@ struct WeatherView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showSettings)
 
             // Specular edge — angular gradient simulates glass rim lighting
+            // Clear mode uses a brighter, slightly thicker rim to emphasise the glass edge
+            let isClear = settings.glassStyle == .clear
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(
                     AngularGradient(
                         stops: [
-                            .init(color: .white.opacity(0.45), location: 0.00),
-                            .init(color: .white.opacity(0.18), location: 0.10),
-                            .init(color: .white.opacity(0.05), location: 0.30),
-                            .init(color: .white.opacity(0.01), location: 0.50),
-                            .init(color: .white.opacity(0.05), location: 0.70),
-                            .init(color: .white.opacity(0.18), location: 0.90),
-                            .init(color: .white.opacity(0.45), location: 1.00),
+                            .init(color: .white.opacity(isClear ? 0.70 : 0.45), location: 0.00),
+                            .init(color: .white.opacity(isClear ? 0.30 : 0.18), location: 0.10),
+                            .init(color: .white.opacity(isClear ? 0.10 : 0.05), location: 0.30),
+                            .init(color: .white.opacity(isClear ? 0.03 : 0.01), location: 0.50),
+                            .init(color: .white.opacity(isClear ? 0.10 : 0.05), location: 0.70),
+                            .init(color: .white.opacity(isClear ? 0.30 : 0.18), location: 0.90),
+                            .init(color: .white.opacity(isClear ? 0.70 : 0.45), location: 1.00),
                         ],
                         center: .center,
                         startAngle: .degrees(-90),
                         endAngle: .degrees(270)
                     ),
-                    lineWidth: 1.0
+                    lineWidth: isClear ? 1.5 : 1.0
                 )
         }
         .frame(width: 280, height: 380)
