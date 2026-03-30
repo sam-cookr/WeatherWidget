@@ -114,8 +114,8 @@ class SettingsStore: ObservableObject {
         let ud = UserDefaults.standard
         tempUnit        = TempUnit(rawValue:       ud.string(forKey: Keys.tempUnit)   ?? "") ?? .system
         windUnit        = WindUnit(rawValue:        ud.string(forKey: Keys.windUnit)   ?? "") ?? .system
-        position        = WidgetPosition(rawValue:  ud.string(forKey: Keys.position)   ?? "") ?? .topRight
+        position        = WidgetPosition(rawValue:  ud.string(forKey: Keys.position)   ?? "") ?? .bottomLeft
         refreshInterval = RefreshInterval(rawValue: ud.string(forKey: Keys.refresh)    ?? "") ?? .fifteen
-        glassStyle      = GlassStyle(rawValue:      ud.string(forKey: Keys.glassStyle) ?? "") ?? .frosted
+        glassStyle      = GlassStyle(rawValue:      ud.string(forKey: Keys.glassStyle) ?? "") ?? .clear
     }
 }

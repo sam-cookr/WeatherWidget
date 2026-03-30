@@ -3,10 +3,113 @@ import AppKit
 
 // MARK: - Lock-Screen Glass Background
 
-/// Wraps `NSGlassEffectView` (macOS 15+) with an `NSVisualEffectView` fallback.
-private struct LockScreenGlassView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let container = NSView()
+/// Container that keeps `CABackdropLayer.windowServerAware = true` and `scale = 1.0`
+/// while the window lives in a SkyLight compositor space. Without this the blur goes
+/// dead because the system resets those properties after the space transition.
+private final class GlassContainerView: NSView {
+    weak var glassView: NSView?
+    var hostingView: NSHostingView<AnyView>?
+
+    private var observedBackdropLayers: [CALayer] = []
+    private var setupScheduled = false
+
+    deinit { removeBackdropObservers() }
+
+    override func removeFromSuperview() {
+        removeBackdropObservers()
+        super.removeFromSuperview()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scheduleBackdropSetup()
+    }
+
+    override func layout() {
+        super.layout()
+        scheduleBackdropSetup()
+    }
+
+    func scheduleBackdropSetup() {
+        guard !setupScheduled else { return }
+        setupScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.setupScheduled = false
+            self.configureBackdropLayers()
+        }
+    }
+
+    private func configureBackdropLayers() {
+        guard let glassView, let root = glassView.layer else {
+            scheduleBackdropSetup()
+            return
+        }
+        applyBackdropProperties(in: root)
+        let found = collectBackdropLayers(in: root)
+        removeBackdropObservers()
+        observedBackdropLayers = found
+        for layer in found {
+            layer.addObserver(self, forKeyPath: "windowServerAware", options: [.old, .new], context: nil)
+            layer.addObserver(self, forKeyPath: "scale",             options: [.old, .new], context: nil)
+        }
+    }
+
+    private func applyBackdropProperties(in layer: CALayer) {
+        if NSStringFromClass(type(of: layer)).contains("CABackdropLayer") {
+            layer.setValue(true, forKey: "windowServerAware")
+            layer.setValue(1.0,  forKey: "scale")
+        }
+        layer.sublayers?.forEach { applyBackdropProperties(in: $0) }
+    }
+
+    private func collectBackdropLayers(in layer: CALayer) -> [CALayer] {
+        var result: [CALayer] = []
+        if NSStringFromClass(type(of: layer)).contains("CABackdropLayer") { result.append(layer) }
+        layer.sublayers?.forEach { result.append(contentsOf: collectBackdropLayers(in: $0)) }
+        return result
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        if keyPath == "windowServerAware" {
+            if change?[.newKey] as? Bool == false { configureBackdropLayers() }
+        } else if keyPath == "scale" {
+            if let layer = object as? CALayer,
+               let v = (change?[.newKey] as? NSNumber)?.doubleValue, v != 1.0 {
+                layer.setValue(1.0, forKey: "scale")
+            }
+        } else {
+            super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
+        }
+    }
+
+    private func removeBackdropObservers() {
+        for layer in observedBackdropLayers {
+            layer.removeObserver(self, forKeyPath: "windowServerAware")
+            layer.removeObserver(self, forKeyPath: "scale")
+        }
+        observedBackdropLayers.removeAll()
+    }
+}
+
+// Sets NSGlassEffectView's private variant via runtime IMP dispatch (same technique as Atoll).
+// Variant 11 is the Liquid Glass look Apple uses for lock-screen panels.
+private typealias VariantSetterIMP = @convention(c) (AnyObject, Selector, Int) -> Void
+private func applyGlassVariant(_ glass: NSView, variant: Int) {
+    let sel = NSSelectorFromString("set_variant:")
+    guard let m = class_getInstanceMethod(object_getClass(glass), sel) else { return }
+    unsafeBitCast(method_getImplementation(m), to: VariantSetterIMP.self)(glass, sel, variant)
+}
+
+/// Frosted glass background — NSGlassEffectView as a background layer (no content embedding).
+private struct FrostedGlassBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> GlassContainerView {
+        let container = GlassContainerView()
         container.wantsLayer = true
         container.layer?.isOpaque = false
 
@@ -14,46 +117,98 @@ private struct LockScreenGlassView: NSViewRepresentable {
             let glass = GlassClass.init(frame: .zero)
             glass.autoresizingMask = [.width, .height]
             container.addSubview(glass)
+            container.glassView = glass
+            container.scheduleBackdropSetup()
         } else {
             let blur = NSVisualEffectView(frame: .zero)
             blur.autoresizingMask = [.width, .height]
-            blur.material    = .hudWindow
+            blur.material     = .hudWindow
             blur.blendingMode = .behindWindow
-            blur.state       = .active
+            blur.state        = .active
             container.addSubview(blur)
         }
         return container
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: GlassContainerView, context: Context) {}
 }
 
-/// Frosted glass background — raw NSGlassEffectView, no overlay.
-private struct FrostedGlassBackground: View {
-    var body: some View {
-        LockScreenGlassView()
+/// Exact port of Atoll's `LiquidGlassBackground`:
+/// embeds SwiftUI content as `NSGlassEffectView.contentView` via KVC so the glass
+/// effect owns the content boundary and produces correct edge refraction.
+/// Variant 11 is the lock-screen panel variant used by Atoll.
+private struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
+    var variant: Int = 11
+    var cornerRadius: CGFloat = 28
+    var content: Content
+
+    init(variant: Int = 11, cornerRadius: CGFloat = 28, @ViewBuilder content: () -> Content) {
+        self.variant = variant
+        self.cornerRadius = cornerRadius
+        self.content = content()
     }
-}
 
-/// Clear glass background — fully transparent.
-private struct ClearGlassBackground: View {
-    var body: some View {
-        Color.clear
-    }
-}
+    func makeNSView(context: Context) -> GlassContainerView {
+        let container = GlassContainerView()
 
-/// Selects between frosted and clear glass based on the current setting.
-private struct GlassBackground: View {
-    let style: GlassStyle
+        if let GlassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
+            let glass = GlassClass.init(frame: .zero)
+            glass.translatesAutoresizingMaskIntoConstraints = false
+            glass.setValue(cornerRadius, forKey: "cornerRadius")
+            applyGlassVariant(glass, variant: variant)
 
-    var body: some View {
-        if style == .clear {
-            ClearGlassBackground()
+            let hosting = NSHostingView(rootView: AnyView(content))
+            hosting.translatesAutoresizingMaskIntoConstraints = false
+            glass.setValue(hosting, forKey: "contentView")
+
+            container.addSubview(glass)
+            NSLayoutConstraint.activate([
+                glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                glass.topAnchor.constraint(equalTo: container.topAnchor),
+                glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+            container.glassView = glass
+            container.hostingView = hosting
+            container.scheduleBackdropSetup()
         } else {
-            FrostedGlassBackground()
+            // Fallback: NSVisualEffectView with content as subview
+            let blur = NSVisualEffectView(frame: .zero)
+            blur.translatesAutoresizingMaskIntoConstraints = false
+            blur.material     = .hudWindow
+            blur.blendingMode = .behindWindow
+            blur.state        = .active
+
+            let hosting = NSHostingView(rootView: AnyView(content))
+            hosting.translatesAutoresizingMaskIntoConstraints = false
+            blur.addSubview(hosting)
+            container.addSubview(blur)
+            NSLayoutConstraint.activate([
+                blur.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                blur.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                blur.topAnchor.constraint(equalTo: container.topAnchor),
+                blur.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                hosting.leadingAnchor.constraint(equalTo: blur.leadingAnchor),
+                hosting.trailingAnchor.constraint(equalTo: blur.trailingAnchor),
+                hosting.topAnchor.constraint(equalTo: blur.topAnchor),
+                hosting.bottomAnchor.constraint(equalTo: blur.bottomAnchor),
+            ])
+            container.hostingView = hosting
         }
+
+        return container
+    }
+
+    func updateNSView(_ nsView: GlassContainerView, context: Context) {
+        nsView.hostingView?.rootView = AnyView(content)
+        if let glass = nsView.glassView {
+            glass.setValue(cornerRadius, forKey: "cornerRadius")
+            applyGlassVariant(glass, variant: variant)
+        }
+        nsView.scheduleBackdropSetup()
     }
 }
+
 
 // MARK: - Root View
 
@@ -63,116 +218,70 @@ struct WeatherView: View {
     @State private var showSettings = false
 
     var body: some View {
-        ZStack {
-            GlassBackground(style: settings.glassStyle)
-
-            Group {
-                if showSettings {
-                    SettingsPanel(showSettings: $showSettings)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal:   .move(edge: .trailing).combined(with: .opacity)
-                        ))
-                } else if viewModel.isLoading && viewModel.weather == nil {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .tint(.white)
-                        .scaleEffect(1.4)
-                        .transition(.opacity)
-                } else if let weather = viewModel.weather {
-                    WeatherContent(weather: weather, viewModel: viewModel, showSettings: $showSettings)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .leading).combined(with: .opacity),
-                            removal:   .move(edge: .leading).combined(with: .opacity)
-                        ))
-                } else if let err = viewModel.errorMessage {
-                    ErrorView(message: err, viewModel: viewModel, showSettings: $showSettings)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showSettings)
-
-            // Edge refraction — varies by glass style
+        Group {
             if settings.glassStyle == .clear {
-                // Soft prismatic halo
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(
-                        AngularGradient(
-                            stops: [
-                                .init(color: Color(red: 0.70, green: 0.88, blue: 1.00).opacity(0.45), location: 0.00),
-                                .init(color: Color(red: 0.88, green: 0.68, blue: 1.00).opacity(0.35), location: 0.25),
-                                .init(color: Color(red: 1.00, green: 0.85, blue: 0.62).opacity(0.25), location: 0.50),
-                                .init(color: Color(red: 0.68, green: 1.00, blue: 0.85).opacity(0.35), location: 0.75),
-                                .init(color: Color(red: 0.70, green: 0.88, blue: 1.00).opacity(0.45), location: 1.00),
-                            ],
-                            center: .center,
-                            startAngle: .degrees(-90),
-                            endAngle: .degrees(270)
-                        ),
-                        lineWidth: 5
-                    )
-                    .blur(radius: 3)
-                // Crisp prismatic outer rim
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(
-                        AngularGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.85),                                       location: 0.00),
-                                .init(color: Color(red: 0.62, green: 0.88, blue: 1.00).opacity(0.65),   location: 0.08),
-                                .init(color: Color(red: 0.82, green: 0.62, blue: 1.00).opacity(0.45),   location: 0.20),
-                                .init(color: Color(red: 1.00, green: 0.82, blue: 0.58).opacity(0.28),   location: 0.35),
-                                .init(color: .white.opacity(0.04),                                       location: 0.50),
-                                .init(color: Color(red: 0.58, green: 0.92, blue: 1.00).opacity(0.32),   location: 0.65),
-                                .init(color: Color(red: 0.90, green: 0.65, blue: 1.00).opacity(0.50),   location: 0.82),
-                                .init(color: .white.opacity(0.85),                                       location: 1.00),
-                            ],
-                            center: .center,
-                            startAngle: .degrees(-90),
-                            endAngle: .degrees(270)
-                        ),
-                        lineWidth: 1.0
-                    )
-                // Inner top-arc specular
-                RoundedRectangle(cornerRadius: 27, style: .continuous)
-                    .stroke(
-                        AngularGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.55), location: 0.00),
-                                .init(color: .white.opacity(0.18), location: 0.12),
-                                .init(color: .clear,               location: 0.26),
-                                .init(color: .clear,               location: 0.74),
-                                .init(color: .white.opacity(0.14), location: 0.88),
-                                .init(color: .white.opacity(0.42), location: 1.00),
-                            ],
-                            center: .center,
-                            startAngle: .degrees(-90),
-                            endAngle: .degrees(270)
-                        ),
-                        lineWidth: 0.75
-                    )
-                    .padding(1.5)
-                // Deep inset rim
-                RoundedRectangle(cornerRadius: 25, style: .continuous)
-                    .stroke(.white.opacity(0.07), lineWidth: 0.5)
-                    .padding(3)
-            } else if settings.glassStyle == .frosted {
-                // Soft dark halo — broad refraction shadow
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(.black.opacity(0.50), lineWidth: 5)
-                    .blur(radius: 3)
-                // Crisp dark outer rim — the glass edge
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(.black.opacity(0.40), lineWidth: 1.0)
-                // Hair-thin inner highlight
-                RoundedRectangle(cornerRadius: 27, style: .continuous)
-                    .stroke(.white.opacity(0.08), lineWidth: 0.5)
-                    .padding(1)
+                // Atoll approach: content embedded inside NSGlassEffectView via contentView KVC.
+                // This lets the glass own the content boundary and produce correct edge refraction.
+                LiquidGlassBackground(variant: 11, cornerRadius: 28) {
+                    contentGroup
+                        .environmentObject(settings)
+                }
+                .overlay(
+                    // Soften the concentrated white/black specular at the corners:
+                    // a blurred neutral-gray ring partially fills both extremes.
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color(white: 0.5, opacity: 0.18), lineWidth: 2)
+                        .blur(radius: 2)
+                )
+            } else {
+                ZStack {
+                    FrostedGlassBackground()
+                    contentGroup
+                    // Frosted border
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(.black.opacity(0.50), lineWidth: 5)
+                        .blur(radius: 3)
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(.black.opacity(0.40), lineWidth: 1.0)
+                    RoundedRectangle(cornerRadius: 27, style: .continuous)
+                        .stroke(.white.opacity(0.08), lineWidth: 0.5)
+                        .padding(1)
+                }
             }
         }
         .frame(width: 280, height: 380)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: .black.opacity(0.5),  radius: 24, x: 0, y: 12)
         .shadow(color: .black.opacity(0.20), radius: 3,  x: 0, y: 1)
+    }
+
+    @ViewBuilder
+    private var contentGroup: some View {
+        Group {
+            if showSettings {
+                SettingsPanel(showSettings: $showSettings)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal:   .move(edge: .trailing).combined(with: .opacity)
+                    ))
+            } else if viewModel.isLoading && viewModel.weather == nil {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(.white)
+                    .scaleEffect(1.4)
+                    .transition(.opacity)
+            } else if let weather = viewModel.weather {
+                WeatherContent(weather: weather, viewModel: viewModel, showSettings: $showSettings)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal:   .move(edge: .leading).combined(with: .opacity)
+                    ))
+            } else if let err = viewModel.errorMessage {
+                ErrorView(message: err, viewModel: viewModel, showSettings: $showSettings)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showSettings)
     }
 }
 
