@@ -16,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferencesWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
+    private var isWidgetVisible = false
+    private var toggleMenuItem: NSMenuItem?
 
     // MARK: - Launch
 
@@ -51,6 +53,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
+        let toggle = NSMenuItem(
+            title: "Show Widget",
+            action: #selector(toggleWidget),
+            keyEquivalent: "w"
+        )
+        toggle.target = self
+        menu.addItem(toggle)
+        toggleMenuItem = toggle
+
+        menu.addItem(.separator())
+
         let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(openPreferences),
@@ -69,6 +82,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem?.menu = menu
+    }
+
+    // MARK: - Widget Toggle
+
+    @objc func toggleWidget() {
+        if isWidgetVisible {
+            floatingWindow?.orderOut(nil)
+            isWidgetVisible = false
+            toggleMenuItem?.title = "Show Widget"
+        } else {
+            guard let w = floatingWindow, let screen = NSScreen.main else { return }
+            w.setFrameOrigin(origin(for: settings.position, windowSize: w.frame.size, screen: screen))
+            w.makeKeyAndOrderFront(nil)
+            isWidgetVisible = true
+            toggleMenuItem?.title = "Hide Widget"
+        }
     }
 
     // MARK: - Preferences Window
@@ -164,6 +193,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screenRevealed() {
         floatingWindow?.orderOut(nil)
+        isWidgetVisible = false
+        toggleMenuItem?.title = "Show Widget"
     }
 
     // MARK: - Floating Widget Window
