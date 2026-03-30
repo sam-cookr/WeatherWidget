@@ -3,7 +3,9 @@ set -e
 
 APP_NAME="WeatherWidget"
 BUNDLE_ID="com.samcooke.WeatherWidget"
-VERSION="1.1"
+VERSION="1.5"
+SIGN_ID="Developer ID Application: SAMUEL ROBERT COOK (56GYTHWZCC)"
+NOTARIZE_PROFILE="notarytool-creds"
 
 # ── Build ──────────────────────────────────────────────────────────────────
 echo "==> Building $APP_NAME $VERSION (release)..."
@@ -65,10 +67,12 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-# ── Ad-hoc code sign ───────────────────────────────────────────────────────
-# Prevents the "damaged and can't be opened" Gatekeeper error.
-echo "==> Code signing (ad-hoc)..."
-codesign --force --deep --sign - "$APP_DIR"
+# ── Code sign ──────────────────────────────────────────────────────────────
+echo "==> Code signing (Developer ID)..."
+codesign --force --deep --options runtime \
+    --sign "$SIGN_ID" \
+    --identifier "$BUNDLE_ID" \
+    "$APP_DIR"
 
 # ── DMG ────────────────────────────────────────────────────────────────────
 echo "==> Generating DMG background..."
@@ -134,9 +138,18 @@ hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_NAME"
 # Cleanup
 rm -f "$RW_DMG" dmg_background.png
 
+# ── Notarize + staple ──────────────────────────────────────────────────────
+echo "==> Submitting $DMG_NAME to Apple notary service (this may take a minute)..."
+xcrun notarytool submit "$DMG_NAME" \
+    --keychain-profile "$NOTARIZE_PROFILE" \
+    --wait
+
+echo "==> Stapling notarization ticket..."
+xcrun stapler staple "$DMG_NAME"
+
 echo ""
 echo "Done!"
 echo "  App bundle : $APP_DIR"
-echo "  Disk image : $DMG_NAME"
+echo "  Disk image : $DMG_NAME (notarized + stapled)"
 echo ""
 echo "To install: open $DMG_NAME and drag $APP_NAME to Applications."

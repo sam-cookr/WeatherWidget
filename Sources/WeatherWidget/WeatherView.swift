@@ -4,7 +4,6 @@ import AppKit
 // MARK: - Lock-Screen Glass Background
 
 /// Wraps `NSGlassEffectView` (macOS 15+) with an `NSVisualEffectView` fallback.
-/// This provides native compositor-level transparency without Screen Recording permission.
 private struct LockScreenGlassView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
@@ -29,25 +28,14 @@ private struct LockScreenGlassView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-/// Frosted glass background — native compositor blur with dark overlay for readability.
+/// Frosted glass background — raw NSGlassEffectView, no overlay.
 private struct FrostedGlassBackground: View {
     var body: some View {
-        ZStack {
-            LockScreenGlassView()
-            Color.black.opacity(0.22)
-            LinearGradient(
-                stops: [
-                    .init(color: .white.opacity(0.09), location: 0),
-                    .init(color: .clear, location: 0.22),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
+        LockScreenGlassView()
     }
 }
 
-/// Clear glass background — fully transparent, no overlays.
+/// Clear glass background — fully transparent.
 private struct ClearGlassBackground: View {
     var body: some View {
         Color.clear
@@ -104,19 +92,39 @@ struct WeatherView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showSettings)
 
-            // Specular edge — angular gradient simulates glass rim lighting (frosted only)
-            if settings.glassStyle != .clear {
+            // Edge refraction — varies by glass style
+            if settings.glassStyle == .clear {
+                // Soft prismatic halo
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .stroke(
                         AngularGradient(
                             stops: [
-                                .init(color: .white.opacity(0.45), location: 0.00),
-                                .init(color: .white.opacity(0.18), location: 0.10),
-                                .init(color: .white.opacity(0.05), location: 0.30),
-                                .init(color: .white.opacity(0.01), location: 0.50),
-                                .init(color: .white.opacity(0.05), location: 0.70),
-                                .init(color: .white.opacity(0.18), location: 0.90),
-                                .init(color: .white.opacity(0.45), location: 1.00),
+                                .init(color: Color(red: 0.70, green: 0.88, blue: 1.00).opacity(0.45), location: 0.00),
+                                .init(color: Color(red: 0.88, green: 0.68, blue: 1.00).opacity(0.35), location: 0.25),
+                                .init(color: Color(red: 1.00, green: 0.85, blue: 0.62).opacity(0.25), location: 0.50),
+                                .init(color: Color(red: 0.68, green: 1.00, blue: 0.85).opacity(0.35), location: 0.75),
+                                .init(color: Color(red: 0.70, green: 0.88, blue: 1.00).opacity(0.45), location: 1.00),
+                            ],
+                            center: .center,
+                            startAngle: .degrees(-90),
+                            endAngle: .degrees(270)
+                        ),
+                        lineWidth: 5
+                    )
+                    .blur(radius: 3)
+                // Crisp prismatic outer rim
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(
+                        AngularGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.85),                                       location: 0.00),
+                                .init(color: Color(red: 0.62, green: 0.88, blue: 1.00).opacity(0.65),   location: 0.08),
+                                .init(color: Color(red: 0.82, green: 0.62, blue: 1.00).opacity(0.45),   location: 0.20),
+                                .init(color: Color(red: 1.00, green: 0.82, blue: 0.58).opacity(0.28),   location: 0.35),
+                                .init(color: .white.opacity(0.04),                                       location: 0.50),
+                                .init(color: Color(red: 0.58, green: 0.92, blue: 1.00).opacity(0.32),   location: 0.65),
+                                .init(color: Color(red: 0.90, green: 0.65, blue: 1.00).opacity(0.50),   location: 0.82),
+                                .init(color: .white.opacity(0.85),                                       location: 1.00),
                             ],
                             center: .center,
                             startAngle: .degrees(-90),
@@ -124,6 +132,41 @@ struct WeatherView: View {
                         ),
                         lineWidth: 1.0
                     )
+                // Inner top-arc specular
+                RoundedRectangle(cornerRadius: 27, style: .continuous)
+                    .stroke(
+                        AngularGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.55), location: 0.00),
+                                .init(color: .white.opacity(0.18), location: 0.12),
+                                .init(color: .clear,               location: 0.26),
+                                .init(color: .clear,               location: 0.74),
+                                .init(color: .white.opacity(0.14), location: 0.88),
+                                .init(color: .white.opacity(0.42), location: 1.00),
+                            ],
+                            center: .center,
+                            startAngle: .degrees(-90),
+                            endAngle: .degrees(270)
+                        ),
+                        lineWidth: 0.75
+                    )
+                    .padding(1.5)
+                // Deep inset rim
+                RoundedRectangle(cornerRadius: 25, style: .continuous)
+                    .stroke(.white.opacity(0.07), lineWidth: 0.5)
+                    .padding(3)
+            } else if settings.glassStyle == .frosted {
+                // Soft dark halo — broad refraction shadow
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(.black.opacity(0.50), lineWidth: 5)
+                    .blur(radius: 3)
+                // Crisp dark outer rim — the glass edge
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(.black.opacity(0.40), lineWidth: 1.0)
+                // Hair-thin inner highlight
+                RoundedRectangle(cornerRadius: 27, style: .continuous)
+                    .stroke(.white.opacity(0.08), lineWidth: 0.5)
+                    .padding(1)
             }
         }
         .frame(width: 280, height: 380)
@@ -192,8 +235,8 @@ struct WeatherContent: View {
                             .padding(.top, 5)
                     }
                     Text(weather.condition)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white.opacity(0.65))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.70))
                 }
                 Spacer()
             }
@@ -201,8 +244,8 @@ struct WeatherContent: View {
             .padding(.top, 10)
 
             Text(weather.highLowString)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(.white.opacity(0.5))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.55))
                 .padding(.horizontal, 18)
                 .padding(.top, 4)
 
@@ -319,8 +362,8 @@ struct DetailCell: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
             Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.white.opacity(0.45))
                 .textCase(.uppercase)
                 .tracking(0.4)
         }
