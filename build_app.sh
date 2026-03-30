@@ -14,7 +14,7 @@ RELEASE_DIR=$(swift build -c release --show-bin-path 2>/dev/null)
 
 # ── Icon ───────────────────────────────────────────────────────────────────
 echo "==> Generating icon..."
-swift generate_icon.swift
+swift scripts/generate_icon.swift
 mkdir -p icon.iconset
 sips -z 16   16   icon.png --out icon.iconset/icon_16x16.png    2>/dev/null
 sips -z 32   32   icon.png --out icon.iconset/icon_16x16@2x.png 2>/dev/null
@@ -76,7 +76,7 @@ codesign --force --deep --options runtime \
 
 # ── DMG ────────────────────────────────────────────────────────────────────
 echo "==> Generating DMG background..."
-swift generate_dmg_background.swift
+swift scripts/generate_dmg_background.swift
 
 echo "==> Creating $APP_NAME.dmg..."
 
@@ -110,13 +110,13 @@ tell application "Finder"
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
-        set the bounds of container window to {400, 100, 1000, 500}
+        set the bounds of container window to {200, 120, 760, 430}
         set theViewOptions to the icon view options of container window
         set arrangement of theViewOptions to not arranged
         set icon size of theViewOptions to 128
         set background picture of theViewOptions to file ".background:background.png"
-        set position of item "$APP_NAME.app" to {175, 175}
-        set position of item "Applications"   to {425, 175}
+        set position of item "$APP_NAME.app" to {140, 155}
+        set position of item "Applications"   to {420, 155}
         close
         open
         update without registering applications
