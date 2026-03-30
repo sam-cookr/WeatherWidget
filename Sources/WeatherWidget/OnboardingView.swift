@@ -163,44 +163,47 @@ private struct SetupStep: View {
     @EnvironmentObject var settings: SettingsStore
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 6) {
-                Text("Quick Setup")
-                    .font(.system(size: 22, weight: .bold))
-                Text("You can change these anytime from the menu bar.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top, 24)
-            .padding(.bottom, 16)
-
-            Form {
-                Section("Widget Position") {
-                    PositionPickerRow(selection: $settings.position)
+        ScrollView {
+            VStack(spacing: 0) {
+                VStack(spacing: 6) {
+                    Text("Quick Setup")
+                        .font(.system(size: 22, weight: .bold))
+                    Text("You can change these anytime from the menu bar.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.top, 24)
+                .padding(.bottom, 16)
 
-                Section("Temperature") {
-                    Picker("Unit", selection: $settings.tempUnit) {
-                        ForEach(TempUnit.allCases, id: \.self) { u in
-                            Text(u.label).tag(u)
-                        }
+                Form {
+                    Section("Widget Position") {
+                        PositionPickerRow(selection: $settings.position)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
 
-                Section("Wind Speed") {
-                    Picker("Unit", selection: $settings.windUnit) {
-                        ForEach(WindUnit.allCases, id: \.self) { u in
-                            Text(u.label).tag(u)
+                    Section("Temperature") {
+                        Picker("Unit", selection: $settings.tempUnit) {
+                            ForEach(TempUnit.allCases, id: \.self) { u in
+                                Text(u.label).tag(u)
+                            }
                         }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+
+                    Section("Wind Speed") {
+                        Picker("Unit", selection: $settings.windUnit) {
+                            ForEach(WindUnit.allCases, id: \.self) { u in
+                                Text(u.label).tag(u)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
                 }
+                .formStyle(.grouped)
+                .scrollDisabled(true)
+                .frame(minHeight: 320)
             }
-            .formStyle(.grouped)
-            .scrollDisabled(true)
         }
     }
 }
