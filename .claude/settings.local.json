@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "mcp__exa__crawling_exa",
-      "Bash(swift build:*)"
-    ]
-  }
-}
