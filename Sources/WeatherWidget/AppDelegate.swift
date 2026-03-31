@@ -38,6 +38,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default().removeObserver(self)
     }
 
+    /// Opens Settings when the user re-activates the app (e.g. double-clicks in Finder or Spotlight).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            openPreferences()
+        }
+        return true
+    }
+
     // MARK: - Menu Bar
 
     private func setupMenuBar() {
@@ -92,7 +100,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             isWidgetVisible = false
             toggleMenuItem?.title = "Show Widget"
         } else {
-            guard let w = floatingWindow, let screen = NSScreen.main else { return }
+            guard let w = floatingWindow, let screen = selectedScreen else { return }
             w.setFrameOrigin(origin(for: settings.position, windowSize: w.frame.size, screen: screen))
             w.makeKeyAndOrderFront(nil)
             isWidgetVisible = true
@@ -165,6 +173,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] pos in self?.repositionWindow(to: pos) }
             .store(in: &cancellables)
+
+        settings.$widgetSize
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] size in self?.resizeWidget(to: size) }
+            .store(in: &cancellables)
+
+        settings.$targetScreenName
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.repositionWindow(to: self.settings.position)
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Screen Lock / Screensaver
@@ -183,7 +206,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screenObscured() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, let window = self.floatingWindow, let screen = NSScreen.main else { return }
+            guard let self, let window = self.floatingWindow, let screen = self.selectedScreen else { return }
             window.makeKeyAndOrderFront(nil)
             window.setFrameOrigin(self.origin(for: self.settings.position,
                                               windowSize: window.frame.size,
@@ -192,6 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func screenRevealed() {
+        guard settings.autoHideOnUnlock else { return }
         floatingWindow?.orderOut(nil)
         isWidgetVisible = false
         toggleMenuItem?.title = "Show Widget"
@@ -207,8 +231,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             rootView: WeatherView(viewModel: vm).environmentObject(settings)
         )
 
+        let size = settings.widgetSize.windowSize
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 280, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
             styleMask:   [.borderless, .fullSizeContentView],
             backing:     .buffered,
             defer:       false
@@ -233,7 +258,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         floatingWindow = window
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self, let w = self.floatingWindow, let screen = NSScreen.main else { return }
+            guard let self, let w = self.floatingWindow, let screen = self.selectedScreen else { return }
             w.setFrameOrigin(self.origin(for: self.settings.position,
                                          windowSize: w.frame.size,
                                          screen: screen))
@@ -244,9 +269,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Positioning
 
+    private var selectedScreen: NSScreen? {
+        let name = settings.targetScreenName
+        if name.isEmpty { return NSScreen.main }
+        return NSScreen.screens.first { $0.localizedName == name } ?? NSScreen.main
+    }
+
     private func repositionWindow(to position: WidgetPosition) {
-        guard let window = floatingWindow, let screen = NSScreen.main else { return }
+        guard let window = floatingWindow, let screen = selectedScreen else { return }
         window.setFrameOrigin(origin(for: position, windowSize: window.frame.size, screen: screen))
+    }
+
+    private func resizeWidget(to size: WidgetSize) {
+        guard let window = floatingWindow, let screen = selectedScreen else { return }
+        let newSize = size.windowSize
+        window.setContentSize(newSize)
+        // Update corner mask to match new size
+        window.contentView?.layer?.cornerRadius = 28
+        window.setFrameOrigin(origin(for: settings.position, windowSize: newSize, screen: screen))
     }
 
     private func origin(for position: WidgetPosition, windowSize: CGSize, screen: NSScreen) -> NSPoint {

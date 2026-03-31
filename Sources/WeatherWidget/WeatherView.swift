@@ -218,17 +218,14 @@ struct WeatherView: View {
     @State private var showSettings = false
 
     var body: some View {
+        let size = settings.widgetSize.windowSize
         Group {
             if settings.glassStyle == .clear {
-                // Atoll approach: content embedded inside NSGlassEffectView via contentView KVC.
-                // This lets the glass own the content boundary and produce correct edge refraction.
                 LiquidGlassBackground(variant: 11, cornerRadius: 28) {
                     contentGroup
                         .environmentObject(settings)
                 }
                 .overlay(
-                    // Soften the concentrated white/black specular at the corners:
-                    // a blurred neutral-gray ring partially fills both extremes.
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
                         .stroke(Color(white: 0.5, opacity: 0.18), lineWidth: 2)
                         .blur(radius: 2)
@@ -236,6 +233,7 @@ struct WeatherView: View {
             } else {
                 ZStack {
                     FrostedGlassBackground()
+                        .opacity(settings.frostedOpacity)
                     contentGroup
                     // Frosted border
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -249,7 +247,7 @@ struct WeatherView: View {
                 }
             }
         }
-        .frame(width: 280, height: 380)
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: .black.opacity(0.5),  radius: 24, x: 0, y: 12)
         .shadow(color: .black.opacity(0.20), radius: 3,  x: 0, y: 1)
@@ -291,6 +289,7 @@ struct WeatherContent: View {
     let weather: WeatherData
     @ObservedObject var viewModel: WeatherViewModel
     @Binding var showSettings: Bool
+    @EnvironmentObject var settings: SettingsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -358,41 +357,87 @@ struct WeatherContent: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 4)
 
-            Spacer(minLength: 12)
+            // ── Detail panel (hidden in compact mode) ─────────────────────────
+            if settings.widgetSize != .compact {
+                Spacer(minLength: 12)
+                detailPanel
+                Spacer().frame(height: 14)
 
-            // ── Detail panel — all rows on one shared background ──────────────
+                // ── 3-day forecast (large mode only) ──────────────────────────
+                if settings.widgetSize == .large && !weather.forecast.isEmpty {
+                    forecastRow
+                    Spacer().frame(height: 14)
+                }
+            } else {
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - Detail panel
+
+    @ViewBuilder
+    private var detailPanel: some View {
+        let cells = visibleCellData
+        if !cells.isEmpty {
+            let chunks = stride(from: 0, to: cells.count, by: 3).map {
+                Array(cells[$0..<min($0 + 3, cells.count)])
+            }
             VStack(spacing: 0) {
-                detailRow([
-                    ("thermometer.medium", "Feels Like", weather.feelsLikeString),
-                    ("humidity",           "Humidity",   "\(weather.humidity)%"),
-                    ("wind",               "Wind",       weather.windString),
-                ])
-                rowDivider
-                detailRow([
-                    ("sun.max.fill",          "UV Index", weather.uvString),
-                    ("cloud.rain",            "Rain",     weather.precipString),
-                    ("thermometer.snowflake", "Dew Pt",   weather.dewPointString),
-                ])
+                ForEach(Array(chunks.enumerated()), id: \.offset) { idx, chunk in
+                    if idx > 0 { rowDivider }
+                    dynamicDetailRow(chunk)
+                }
                 rowDivider
                 HStack(spacing: 0) {
-                    sunriseSunsetCell(icon: "sunrise.fill", time: weather.sunrise)
+                    sunriseSunsetCell(icon: "sunrise.fill",
+                                      time: formatSunTime(weather.sunriseISO, use24h: settings.timeFormat.use24h))
                     Rectangle()
                         .fill(.white.opacity(0.08))
                         .frame(width: 0.5, height: 20)
-                    sunriseSunsetCell(icon: "sunset.fill", time: weather.sunset)
+                    sunriseSunsetCell(icon: "sunset.fill",
+                                      time: formatSunTime(weather.sunsetISO, use24h: settings.timeFormat.use24h))
                 }
                 .padding(.vertical, 10)
             }
             .background(unifiedPanelBackground)
             .padding(.horizontal, 12)
-
-            Spacer().frame(height: 14)
         }
+    }
+
+    private var visibleCellData: [(DetailCell, String)] {
+        let all: [(DetailCell, String)] = [
+            (.feelsLike, weather.feelsLikeString),
+            (.humidity,  "\(weather.humidity)%"),
+            (.wind,      weather.windString),
+            (.uvIndex,   weather.uvString),
+            (.rain,      weather.precipString),
+            (.dewPoint,  weather.dewPointString),
+        ]
+        return all.filter { settings.visibleDetailCells.contains($0.0) }
+    }
+
+    // MARK: - 3-day forecast row
+
+    private var forecastRow: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(weather.forecast.enumerated()), id: \.offset) { idx, day in
+                if idx > 0 {
+                    Rectangle()
+                        .fill(.white.opacity(0.08))
+                        .frame(width: 0.5, height: 44)
+                }
+                ForecastDayView(day: day)
+            }
+        }
+        .padding(.vertical, 10)
+        .background(unifiedPanelBackground)
+        .padding(.horizontal, 12)
     }
 
     // MARK: - Sub-views
 
-    private func detailRow(_ items: [(String, String, String)]) -> some View {
+    private func dynamicDetailRow(_ items: [(DetailCell, String)]) -> some View {
         HStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 if index > 0 {
@@ -400,7 +445,7 @@ struct WeatherContent: View {
                         .fill(.white.opacity(0.08))
                         .frame(width: 0.5, height: 26)
                 }
-                DetailCell(icon: item.0, label: item.1, value: item.2)
+                DetailCellView(icon: item.0.icon, label: item.0.shortLabel, value: item.1)
             }
         }
         .padding(.vertical, 10)
@@ -454,9 +499,9 @@ struct WeatherContent: View {
     }
 }
 
-// MARK: - Detail Cell
+// MARK: - Detail Cell View
 
-struct DetailCell: View {
+struct DetailCellView: View {
     let icon: String
     let label: String
     let value: String
@@ -475,6 +520,33 @@ struct DetailCell: View {
                 .foregroundColor(.white.opacity(0.45))
                 .textCase(.uppercase)
                 .tracking(0.4)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Forecast Day View
+
+private struct ForecastDayView: View {
+    let day: ForecastDay
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(day.dayLabel)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.55))
+                .textCase(.uppercase)
+                .tracking(0.3)
+            Image(systemName: WeatherViewModel.sfSymbol(for: day.conditionCode))
+                .font(.system(size: 18))
+                .symbolRenderingMode(.multicolor)
+                .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
+            Text("H:\(Int(day.high.rounded()))°")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
+            Text("L:\(Int(day.low.rounded()))°")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
     }
