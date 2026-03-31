@@ -38,35 +38,51 @@ struct SettingsPanel: View {
 
             separator
 
-            VStack(alignment: .leading, spacing: 0) {
-                settingRow(label: "TEMPERATURE", icon: "thermometer.medium") {
-                    SegmentPicker(options: Array(TempUnit.allCases), selection: $settings.tempUnit)
-                }
-                settingRow(label: "WIND SPEED", icon: "wind") {
-                    SegmentPicker(options: Array(WindUnit.allCases), selection: $settings.windUnit)
-                }
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    settingRow(label: "TEMPERATURE", icon: "thermometer.medium") {
+                        SegmentPicker(options: Array(TempUnit.allCases), selection: $settings.tempUnit)
+                    }
+                    settingRow(label: "WIND SPEED", icon: "wind") {
+                        SegmentPicker(options: Array(WindUnit.allCases), selection: $settings.windUnit)
+                    }
+                    settingRow(label: "TIME FORMAT", icon: "clock") {
+                        SegmentPicker(options: Array(TimeFormat.allCases), selection: $settings.timeFormat)
+                    }
 
-                separator.padding(.vertical, 4)
+                    separator.padding(.vertical, 4)
 
-                settingRow(label: "POSITION", icon: "arrow.up.left.and.arrow.down.right") {
-                    SegmentPicker(options: Array(WidgetPosition.allCases), selection: $settings.position)
+                    settingRow(label: "WIDGET SIZE", icon: "rectangle.expand.vertical") {
+                        SegmentPicker(options: Array(WidgetSize.allCases), selection: $settings.widgetSize)
+                    }
+                    settingRow(label: "POSITION", icon: "arrow.up.left.and.arrow.down.right") {
+                        SegmentPicker(options: Array(WidgetPosition.allCases), selection: $settings.position)
+                    }
+                    settingRow(label: "AUTO-REFRESH", icon: "arrow.clockwise") {
+                        SegmentPicker(options: Array(RefreshInterval.allCases), selection: $settings.refreshInterval)
+                    }
+                    settingRow(label: "GLASS STYLE", icon: "circle.lefthalf.filled") {
+                        SegmentPicker(options: Array(GlassStyle.allCases), selection: $settings.glassStyle)
+                    }
+
+                    if settings.glassStyle == .frosted {
+                        separator.padding(.vertical, 4)
+                        settingRow(label: "OPACITY", icon: "sun.min") {
+                            OpacitySlider(value: $settings.frostedOpacity)
+                        }
+                    }
                 }
-                settingRow(label: "AUTO-REFRESH", icon: "arrow.clockwise") {
-                    SegmentPicker(options: Array(RefreshInterval.allCases), selection: $settings.refreshInterval)
-                }
-                settingRow(label: "GLASS STYLE", icon: "circle.lefthalf.filled") {
-                    SegmentPicker(options: Array(GlassStyle.allCases), selection: $settings.glassStyle)
-                }
+                .padding(.top, 4)
+                .padding(.bottom, 14)
             }
-            .padding(.top, 4)
 
-            Spacer()
+            separator
 
             Text("WeatherWidget · Open-Meteo")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(.white.opacity(0.2))
                 .frame(maxWidth: .infinity)
-                .padding(.bottom, 14)
+                .padding(.vertical, 10)
         }
     }
 
@@ -96,6 +112,25 @@ struct SettingsPanel: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 9)
+    }
+}
+
+// MARK: - Opacity Slider
+
+struct OpacitySlider: View {
+    @Binding var value: Double
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "circle.dotted")
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.35))
+            Slider(value: $value, in: 0.3...1.0)
+                .accentColor(.white.opacity(0.6))
+            Image(systemName: "circle.fill")
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.6))
+        }
     }
 }
 

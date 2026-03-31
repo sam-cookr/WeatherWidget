@@ -4,6 +4,13 @@ import Combine
 
 // MARK: - Models
 
+struct ForecastDay {
+    let high: Double
+    let low: Double
+    let conditionCode: Int
+    let dayLabel: String
+}
+
 struct WeatherData {
     let temperature: Double
     let feelsLike: Double
@@ -16,8 +23,9 @@ struct WeatherData {
     let uvIndex: Double
     let precipChance: Int
     let dewPoint: Double
-    let sunrise: String
-    let sunset: String
+    let sunriseISO: String   // "2026-03-31T06:45" — format at display time
+    let sunsetISO: String
+    let forecast: [ForecastDay]
     let city: String
     let windUnit: String
 
@@ -28,6 +36,23 @@ struct WeatherData {
     var windString: String      { "\(Int(windSpeed.rounded())) \(windUnit)" }
     var uvString: String        { "\(Int(uvIndex.rounded()))" }
     var precipString: String    { "\(precipChance)%" }
+}
+
+// MARK: - Sun time formatter (module-level so WeatherView can use it too)
+
+func formatSunTime(_ iso: String, use24h: Bool) -> String {
+    let parts = iso.split(separator: "T")
+    guard parts.count == 2 else { return iso }
+    let time = String(parts[1].prefix(5))
+    let comps = time.split(separator: ":")
+    guard comps.count == 2, let h = Int(comps[0]) else { return time }
+    if use24h {
+        return time
+    } else {
+        let ampm = h >= 12 ? "PM" : "AM"
+        let h12  = h == 0 ? 12 : (h > 12 ? h - 12 : h)
+        return "\(h12):\(comps[1]) \(ampm)"
+    }
 }
 
 // MARK: - API Response Types
@@ -66,13 +91,17 @@ private struct OpenMeteoResponse: Codable {
         let temperature2mMax: [Double]
         let temperature2mMin: [Double]
         let precipitationProbabilityMax: [Int]
+        let weatherCode: [Int]
+        let time: [String]
         let sunrise: [String]
         let sunset: [String]
 
         enum CodingKeys: String, CodingKey {
-            case temperature2mMax             = "temperature_2m_max"
-            case temperature2mMin             = "temperature_2m_min"
-            case precipitationProbabilityMax  = "precipitation_probability_max"
+            case temperature2mMax            = "temperature_2m_max"
+            case temperature2mMin            = "temperature_2m_min"
+            case precipitationProbabilityMax = "precipitation_probability_max"
+            case weatherCode                 = "weather_code"
+            case time
             case sunrise
             case sunset
         }
@@ -98,10 +127,13 @@ class WeatherViewModel: ObservableObject {
     }
 
     private func setupObservers() {
-        // Re-fetch when unit settings change
+        // Re-fetch when unit or data source settings change
         settings.$tempUnit.dropFirst().map { _ in () }
             .merge(with: settings.$windUnit.dropFirst().map { _ in () })
-            .debounce(for: 0.2, scheduler: DispatchQueue.main)
+            .merge(with: settings.$locationMode.dropFirst().map { _ in () })
+            .merge(with: settings.$manualCityName.dropFirst().map { _ in () })
+            .merge(with: settings.$widgetSize.dropFirst().map { _ in () })
+            .debounce(for: 0.3, scheduler: DispatchQueue.main)
             .sink { [weak self] in Task { await self?.fetch() } }
             .store(in: &cancellables)
 
@@ -171,6 +203,14 @@ class WeatherViewModel: ObservableObject {
     }
 
     private func fetchGeo() async throws -> GeoResponse {
+        // Use manual location if configured
+        if settings.locationMode == .manual, !settings.manualCityName.isEmpty {
+            return GeoResponse(
+                city: settings.manualCityName,
+                latitude: settings.manualLatitude,
+                longitude: settings.manualLongitude
+            )
+        }
         let url = URL(string: "https://ipapi.co/json/")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode(GeoResponse.self, from: data)
@@ -182,24 +222,38 @@ class WeatherViewModel: ObservableObject {
         windApiUnit: String,
         windDisplayUnit: String
     ) async throws -> WeatherData {
-        let tempUnit = useFahrenheit ? "fahrenheit" : "celsius"
+        let tempUnit     = useFahrenheit ? "fahrenheit" : "celsius"
+        let forecastDays = settings.widgetSize == .large ? 4 : 1
 
         var comps = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
         comps.queryItems = [
             .init(name: "latitude",          value: "\(geo.latitude)"),
             .init(name: "longitude",         value: "\(geo.longitude)"),
             .init(name: "current",           value: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,uv_index,dew_point_2m"),
-            .init(name: "daily",             value: "temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset"),
+            .init(name: "daily",             value: "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,time,sunrise,sunset"),
             .init(name: "temperature_unit",  value: tempUnit),
             .init(name: "wind_speed_unit",   value: windApiUnit),
             .init(name: "timezone",          value: "auto"),
-            .init(name: "forecast_days",     value: "1"),
+            .init(name: "forecast_days",     value: "\(forecastDays)"),
         ]
 
         let (data, _) = try await URLSession.shared.data(from: comps.url!)
         let resp = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
         let c = resp.current
         let d = resp.daily
+
+        // Build optional 3-day forecast (indices 1-3, skipping today at index 0)
+        var forecast: [ForecastDay] = []
+        if settings.widgetSize == .large {
+            for i in 1..<min(4, d.temperature2mMax.count) {
+                forecast.append(ForecastDay(
+                    high: d.temperature2mMax[i],
+                    low:  d.temperature2mMin[i],
+                    conditionCode: d.weatherCode.indices.contains(i) ? d.weatherCode[i] : 0,
+                    dayLabel: dayLabel(from: d.time.indices.contains(i) ? d.time[i] : "")
+                ))
+            }
+        }
 
         return WeatherData(
             temperature:  c.temperature2m,
@@ -213,25 +267,25 @@ class WeatherViewModel: ObservableObject {
             uvIndex:      c.uvIndex,
             precipChance: d.precipitationProbabilityMax.first ?? 0,
             dewPoint:     c.dewPoint2m,
-            sunrise:      shortTime(d.sunrise.first ?? ""),
-            sunset:       shortTime(d.sunset.first  ?? ""),
+            sunriseISO:   d.sunrise.first ?? "",
+            sunsetISO:    d.sunset.first  ?? "",
+            forecast:     forecast,
             city:         geo.city,
             windUnit:     windDisplayUnit
         )
     }
 
-
     // MARK: - Helpers
 
-    private func shortTime(_ iso: String) -> String {
-        let parts = iso.split(separator: "T")
-        guard parts.count == 2 else { return iso }
-        let time  = parts[1].prefix(5)
-        let comps = time.split(separator: ":")
-        guard comps.count == 2, let h = Int(comps[0]) else { return String(time) }
-        let ampm = h >= 12 ? "PM" : "AM"
-        let h12  = h == 0 ? 12 : (h > 12 ? h - 12 : h)
-        return "\(h12):\(comps[1]) \(ampm)"
+    private func dayLabel(from dateStr: String) -> String {
+        guard dateStr.count >= 10 else { return dateStr }
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        guard let date = df.date(from: String(dateStr.prefix(10))) else { return dateStr }
+        if Calendar.current.isDateInTomorrow(date) { return "Tomorrow" }
+        let wf = DateFormatter()
+        wf.dateFormat = "EEE"
+        return wf.string(from: date)
     }
 
     // MARK: - WMO Code Helpers
