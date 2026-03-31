@@ -440,7 +440,7 @@ private struct LocationSection: View {
                     TextField("Search city…", text: $searchText)
                         .onSubmit { Task { await search() } }
                     Button("Search") { Task { await search() } }
-                        .disabled(searchText.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
+                        .disabled(isSearching)
                 }
 
                 if isSearching {

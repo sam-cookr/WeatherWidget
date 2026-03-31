@@ -230,7 +230,7 @@ class WeatherViewModel: ObservableObject {
             .init(name: "latitude",          value: "\(geo.latitude)"),
             .init(name: "longitude",         value: "\(geo.longitude)"),
             .init(name: "current",           value: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,uv_index,dew_point_2m"),
-            .init(name: "daily",             value: "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,time,sunrise,sunset"),
+            .init(name: "daily",             value: "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,sunrise,sunset"),
             .init(name: "temperature_unit",  value: tempUnit),
             .init(name: "wind_speed_unit",   value: windApiUnit),
             .init(name: "timezone",          value: "auto"),
