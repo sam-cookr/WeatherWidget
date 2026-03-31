@@ -377,7 +377,7 @@ struct WeatherPane: View {
                         .foregroundStyle(.secondary)
                 }
                 LabeledContent("IP Location") {
-                    Text("ipapi.co")
+                    Text("ipwho.is")
                         .foregroundStyle(.secondary)
                 }
             } header: {
@@ -576,8 +576,8 @@ struct AboutPane: View {
                 Link(destination: URL(string: "https://geocoding-api.open-meteo.com")!) {
                     Label("Open-Meteo · Geocoding API", systemImage: "location.circle.fill")
                 }
-                Link(destination: URL(string: "https://ipapi.co")!) {
-                    Label("ipapi.co · Location lookup", systemImage: "location.fill")
+                Link(destination: URL(string: "https://ipwho.is")!) {
+                    Label("ipwho.is · Location lookup", systemImage: "location.fill")
                 }
                 Link(destination: URL(string: "https://github.com/Lakr233/SkyLightWindow")!) {
                     Label("SkyLightWindow by Lakr233", systemImage: "macwindow")

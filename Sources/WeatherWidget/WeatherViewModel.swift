@@ -211,7 +211,7 @@ class WeatherViewModel: ObservableObject {
                 longitude: settings.manualLongitude
             )
         }
-        let url = URL(string: "https://ipapi.co/json/")!
+        let url = URL(string: "https://ipwho.is/")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode(GeoResponse.self, from: data)
     }
