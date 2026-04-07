@@ -204,6 +204,9 @@ class SettingsStore: ObservableObject {
     @Published var autoHideOnUnlock: Bool {
         didSet { UserDefaults.standard.set(autoHideOnUnlock, forKey: Keys.autoHideOnUnlock) }
     }
+    @Published var showMenuBarIcon: Bool {
+        didSet { UserDefaults.standard.set(showMenuBarIcon, forKey: Keys.showMenuBarIcon) }
+    }
     @Published var targetScreenName: String {
         didSet { UserDefaults.standard.set(targetScreenName, forKey: Keys.targetScreenName) }
     }
@@ -231,6 +234,7 @@ class SettingsStore: ObservableObject {
         static let visibleDetailCells = "ww.visibleDetailCells"
         static let frostedOpacity     = "ww.frostedOpacity"
         static let autoHideOnUnlock   = "ww.autoHideOnUnlock"
+        static let showMenuBarIcon    = "ww.showMenuBarIcon"
         static let targetScreenName   = "ww.targetScreenName"
         static let locationMode       = "ww.locationMode"
         static let manualCityName     = "ww.manualCityName"
@@ -251,6 +255,8 @@ class SettingsStore: ObservableObject {
                             ? ud.double(forKey: Keys.frostedOpacity) : 1.0
         autoHideOnUnlock = ud.object(forKey: Keys.autoHideOnUnlock) != nil
                             ? ud.bool(forKey: Keys.autoHideOnUnlock) : true
+        showMenuBarIcon = ud.object(forKey: Keys.showMenuBarIcon) != nil
+                            ? ud.bool(forKey: Keys.showMenuBarIcon) : true
         targetScreenName = ud.string(forKey: Keys.targetScreenName) ?? ""
         locationMode    = LocationMode(rawValue: ud.string(forKey: Keys.locationMode) ?? "") ?? .auto
         manualCityName  = ud.string(forKey: Keys.manualCityName) ?? ""

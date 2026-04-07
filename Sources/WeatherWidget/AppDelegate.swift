@@ -22,12 +22,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // .accessory = no Dock icon, no Cmd-Tab entry; status item is the only UI entry point
-        NSApp.setActivationPolicy(.accessory)
+        setupApplicationMenu()
         setupMenuBar()
         setupFloatingWindow()
         registerScreenNotifications()
         observeSettings()
+        applyInterfaceMode()
 
         if !UserDefaults.standard.bool(forKey: "ww.onboardingComplete") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.openOnboarding() }
@@ -49,6 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Menu Bar
 
     private func setupMenuBar() {
+        guard statusItem == nil else { return }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem?.button else { return }
 
@@ -90,6 +91,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem?.menu = menu
+    }
+
+    private func tearDownMenuBar() {
+        guard let statusItem else { return }
+        NSStatusBar.system.removeStatusItem(statusItem)
+        self.statusItem = nil
+        toggleMenuItem = nil
+    }
+
+    private func setupApplicationMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let appMenu = NSMenu()
+
+        let settingsItem = NSMenuItem(
+            title: "Settings…",
+            action: #selector(openPreferences),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: "Quit WeatherWidget",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        appMenu.addItem(quitItem)
+
+        appMenuItem.submenu = appMenu
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func applyInterfaceMode() {
+        if settings.showMenuBarIcon {
+            setupMenuBar()
+            NSApp.setActivationPolicy(.accessory)
+        } else {
+            tearDownMenuBar()
+            NSApp.setActivationPolicy(.regular)
+            if preferencesWindow == nil, onboardingWindow == nil {
+                openPreferences()
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
     }
 
     // MARK: - Widget Toggle
@@ -186,6 +237,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.repositionWindow(to: self.settings.position)
+            }
+            .store(in: &cancellables)
+
+        settings.$showMenuBarIcon
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.applyInterfaceMode()
             }
             .store(in: &cancellables)
     }

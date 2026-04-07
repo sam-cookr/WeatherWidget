@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="WeatherWidget"
 BUNDLE_ID="com.samcooke.WeatherWidget"
-VERSION="1.7"
+VERSION="1.8.1"
 SIGN_ID="Developer ID Application: SAMUEL ROBERT COOK (56GYTHWZCC)"
 NOTARIZE_PROFILE="notarytool-creds"
 
