@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Settings Panel
 
@@ -12,6 +13,27 @@ struct SettingsPanel: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 10) {
+                    SettingsGroup(title: "LOCATION") {
+                        SettingRow(label: "Location", icon: "location.fill", iconColor: .mint) {
+                            HStack {
+                                Text(settings.locationMode == .auto
+                                     ? "Auto"
+                                     : (settings.manualCityName.isEmpty ? "Custom" : settings.manualCityName))
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.65))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Spacer()
+                                Button("Change…") {
+                                    NSApp.sendAction(#selector(AppDelegate.openPreferences), to: nil, from: nil)
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.38))
+                            }
+                        }
+                    }
+
                     SettingsGroup(title: "UNITS") {
                         SettingRow(label: "Temperature", icon: "thermometer.medium", iconColor: .orange) {
                             SegmentPicker(options: Array(TempUnit.allCases), selection: $settings.tempUnit)
@@ -117,18 +139,27 @@ struct SettingsPanel: View {
                 .fill(.white.opacity(0.07))
                 .frame(height: 0.5)
                 .padding(.horizontal, 12)
-            Text("WeatherWidget · Open-Meteo")
+            HStack {
+                Text("WeatherWidget · Open-Meteo")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.2))
+                Spacer()
+                Button("All Settings…") {
+                    NSApp.sendAction(#selector(AppDelegate.openPreferences), to: nil, from: nil)
+                }
+                .buttonStyle(.plain)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white.opacity(0.2))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
+                .foregroundStyle(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
         }
     }
 }
 
 // MARK: - Settings Group
 
-private struct SettingsGroup<Content: View>: View {
+struct SettingsGroup<Content: View>: View {
     let title: String
     let content: Content
 
@@ -189,7 +220,7 @@ private struct SettingsGroup<Content: View>: View {
 
 // MARK: - Setting Row
 
-private struct SettingRow<Content: View>: View {
+struct SettingRow<Content: View>: View {
     let label: String
     let icon: String
     let iconColor: Color
@@ -228,7 +259,7 @@ private struct SettingRow<Content: View>: View {
 
 // MARK: - Row Divider
 
-private struct RowDivider: View {
+struct RowDivider: View {
     var body: some View {
         Rectangle()
             .fill(.white.opacity(0.07))

@@ -129,17 +129,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyInterfaceMode() {
+        NSApp.setActivationPolicy(.accessory)
+
         if settings.showMenuBarIcon {
             setupMenuBar()
-            NSApp.setActivationPolicy(.accessory)
         } else {
             tearDownMenuBar()
-            NSApp.setActivationPolicy(.regular)
-            if preferencesWindow == nil, onboardingWindow == nil {
-                openPreferences()
-            } else {
-                NSApp.activate(ignoringOtherApps: true)
-            }
         }
     }
 
@@ -173,6 +168,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             win.center()
             win.isReleasedWhenClosed = false
             win.minSize = NSSize(width: 620, height: 400)
+            win.appearance = NSAppearance(named: .darkAqua)
 
             NotificationCenter.default.addObserver(
                 forName: NSWindow.willCloseNotification,
@@ -200,15 +196,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             win.titleVisibility = .hidden
             win.titlebarAppearsTransparent = true
             win.isMovableByWindowBackground = true
-            win.setContentSize(NSSize(width: 540, height: 500))
+            win.setContentSize(NSSize(width: 540, height: 540))
             win.center()
             win.isReleasedWhenClosed = false
+            win.appearance = NSAppearance(named: .darkAqua)
 
             NotificationCenter.default.addObserver(
                 forName: NSWindow.willCloseNotification,
                 object: win,
                 queue: .main
-            ) { [weak self] _ in self?.onboardingWindow = nil }
+            ) { [weak self] _ in
+                // Mark complete if dismissed early — prevents re-showing on every launch
+                if !UserDefaults.standard.bool(forKey: "ww.onboardingComplete") {
+                    UserDefaults.standard.set(true, forKey: "ww.onboardingComplete")
+                }
+                self?.onboardingWindow = nil
+            }
 
             onboardingWindow = win
         }

@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
-private enum PreferencesPalette {
+enum PreferencesPalette {
     static let canvasTop = Color(red: 0.08, green: 0.12, blue: 0.21)
     static let canvasBottom = Color(red: 0.03, green: 0.05, blue: 0.11)
     static let cardFill = Color.white.opacity(0.08)
@@ -13,7 +13,7 @@ private enum PreferencesPalette {
 
 // MARK: - Geocoding types
 
-private struct GeocodingResult: Codable, Identifiable {
+struct GeocodingResult: Codable, Identifiable {
     let id: Int
     let name: String
     let latitude: Double
@@ -22,7 +22,7 @@ private struct GeocodingResult: Codable, Identifiable {
     let admin1: String?
 }
 
-private struct GeocodingResponse: Codable {
+struct GeocodingResponse: Codable {
     let results: [GeocodingResult]?
 }
 
@@ -871,6 +871,7 @@ struct WeatherPane: View {
                     tint: .blue
                 ) {
                     ForEach(DetailCell.allCases) { cell in
+                        let isLast = settings.visibleDetailCells.count == 1 && settings.visibleDetailCells.contains(cell)
                         SettingsToggleTile(
                             title: cell.label,
                             description: "Show \(cell.shortLabel.lowercased()) in the expanded weather details.",
@@ -878,6 +879,15 @@ struct WeatherPane: View {
                             tint: .blue,
                             isOn: detailCellBinding(cell)
                         )
+                        .opacity(isLast ? 0.5 : 1.0)
+                        .disabled(isLast)
+                    }
+                    if settings.visibleDetailCells.count == 1 {
+                        Text("At least one detail must remain visible.")
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.5))
+                            .padding(.horizontal, 4)
+                            .padding(.top, 2)
                     }
                 }
 
@@ -922,7 +932,9 @@ struct WeatherPane: View {
     }
 }
 
-private struct LocationSettingsCard: View {
+// MARK: - Shared Location Search
+
+struct LocationSearchView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var searchText = ""
     @State private var results: [GeocodingResult] = []
@@ -930,114 +942,80 @@ private struct LocationSettingsCard: View {
     @State private var searchError: String?
 
     var body: some View {
-        SettingsCard(
-            title: "Location",
-            subtitle: "Stay automatic, or search for a city and keep it pinned.",
-            icon: "location.fill",
-            tint: .mint
-        ) {
-            SettingsControlBlock(
-                title: "Location Mode",
-                description: "Automatic uses your IP address. Custom lets you search for a city manually."
-            ) {
-                Picker("Location Mode", selection: $settings.locationMode) {
-                    ForEach(LocationMode.allCases, id: \.self) { mode in
-                        Text(mode == .auto ? "Auto" : "Custom City").tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .onChange(of: settings.locationMode) { _ in
-                    results = []
-                    searchText = ""
-                    searchError = nil
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            if !settings.manualCityName.isEmpty {
+                Text(settings.manualCityName)
+                    .font(.headline)
+                    .foregroundStyle(.white)
             }
 
-            if settings.locationMode == .manual {
-                SettingsControlBlock(
-                    title: settings.manualCityName.isEmpty ? "Choose a City" : "Current City",
-                    description: settings.manualCityName.isEmpty
-                        ? "Search for a place below, then select the match you want WeatherWidget to use."
-                        : "Weather data is currently locked to \(settings.manualCityName)."
-                ) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if !settings.manualCityName.isEmpty {
-                            Text(settings.manualCityName)
-                                .font(.headline)
-                                .foregroundStyle(.white)
-                        }
+            HStack(spacing: 10) {
+                TextField("Search city", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { Task { await search() } }
 
-                        HStack(spacing: 10) {
-                            TextField("Search city", text: $searchText)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit { Task { await search() } }
+                Button("Search", systemImage: "magnifyingglass") {
+                    Task { await search() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.mint)
+                .disabled(isSearching)
+            }
 
-                            Button("Search", systemImage: "magnifyingglass") {
-                                Task { await search() }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.mint)
-                            .disabled(isSearching)
-                        }
+            if isSearching {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Searching…")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.66))
+                }
+            } else if let searchError {
+                Text(searchError)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            } else if !results.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(results) { result in
+                        Button {
+                            select(result)
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(result.name)
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
 
-                        if isSearching {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text("Searching…")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.white.opacity(0.66))
-                            }
-                        } else if let searchError {
-                            Text(searchError)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        } else if !results.isEmpty {
-                            VStack(spacing: 10) {
-                                ForEach(results) { result in
-                                    Button {
-                                        select(result)
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            VStack(alignment: .leading, spacing: 3) {
-                                                Text(result.name)
-                                                    .font(.headline)
-                                                    .foregroundStyle(.white)
+                                    let subtitle = [result.admin1, result.country]
+                                        .compactMap { $0 }
+                                        .joined(separator: ", ")
 
-                                                let subtitle = [result.admin1, result.country]
-                                                    .compactMap { $0 }
-                                                    .joined(separator: ", ")
-
-                                                if !subtitle.isEmpty {
-                                                    Text(subtitle)
-                                                        .font(.subheadline)
-                                                        .foregroundStyle(.white.opacity(0.66))
-                                                }
-                                            }
-
-                                            Spacer(minLength: 0)
-
-                                            if settings.manualCityName == result.name &&
-                                                abs(settings.manualLatitude - result.latitude) < 0.01 {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .foregroundStyle(.mint)
-                                            }
-                                        }
-                                        .padding(14)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 18)
-                                                .fill(Color.white.opacity(0.04))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 18)
-                                                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                                                )
-                                        )
+                                    if !subtitle.isEmpty {
+                                        Text(subtitle)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.white.opacity(0.66))
                                     }
-                                    .buttonStyle(.plain)
+                                }
+
+                                Spacer(minLength: 0)
+
+                                if settings.manualCityName == result.name &&
+                                    abs(settings.manualLatitude - result.latitude) < 0.01 {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.mint)
                                 }
                             }
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(Color.white.opacity(0.04))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18)
+                                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                                    )
+                            )
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -1084,6 +1062,45 @@ private struct LocationSettingsCard: View {
     }
 }
 
+// MARK: - Location Settings Card
+
+private struct LocationSettingsCard: View {
+    @EnvironmentObject var settings: SettingsStore
+
+    var body: some View {
+        SettingsCard(
+            title: "Location",
+            subtitle: "Stay automatic, or search for a city and keep it pinned.",
+            icon: "location.fill",
+            tint: .mint
+        ) {
+            SettingsControlBlock(
+                title: "Location Mode",
+                description: "Automatic uses your IP address. Custom lets you search for a city manually."
+            ) {
+                Picker("Location Mode", selection: $settings.locationMode) {
+                    ForEach(LocationMode.allCases, id: \.self) { mode in
+                        Text(mode == .auto ? "Auto" : "Custom City").tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+
+            if settings.locationMode == .manual {
+                SettingsControlBlock(
+                    title: settings.manualCityName.isEmpty ? "Choose a City" : "Current City",
+                    description: settings.manualCityName.isEmpty
+                        ? "Search for a place below, then select the match you want WeatherWidget to use."
+                        : "Weather data is currently locked to \(settings.manualCityName)."
+                ) {
+                    LocationSearchView()
+                }
+            }
+        }
+    }
+}
+
 // MARK: - About Pane
 
 struct AboutPane: View {
@@ -1092,7 +1109,7 @@ struct AboutPane: View {
             VStack(alignment: .leading, spacing: 18) {
                 PaneHeroCard(
                     pane: .about,
-                    badge: "Version 1.8.1"
+                    badge: "Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–")"
                 )
 
                 SettingsCard(
