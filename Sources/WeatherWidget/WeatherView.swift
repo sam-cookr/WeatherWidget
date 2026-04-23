@@ -293,84 +293,100 @@ struct WeatherContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-
-            // ── Location row ──────────────────────────────────────────────────
-            HStack(spacing: 6) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.5))
-                Text(weather.city)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.9))
-                Spacer()
-                if viewModel.isLoading {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(0.5)
-                        .tint(.white.opacity(0.5))
-                        .frame(width: 16, height: 16)
-                } else {
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            showSettings = true
-                        }
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.3))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-
-            // ── Temperature + Condition ───────────────────────────────────────
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: WeatherViewModel.sfSymbol(for: weather.conditionCode))
-                    .font(.system(size: 38))
-                    .symbolRenderingMode(.multicolor)
-                    .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .top, spacing: 0) {
-                        Text("\(Int(weather.temperature.rounded()))")
-                            .font(.system(size: 44, weight: .thin, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("°")
-                            .font(.system(size: 22, weight: .light))
-                            .foregroundColor(.white.opacity(0.7))
-                            .padding(.top, 5)
-                    }
-                    Text(weather.condition)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.white.opacity(0.70))
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
-
-            Text(weather.highLowString)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundColor(.white.opacity(0.55))
+            topBar
                 .padding(.horizontal, 18)
-                .padding(.top, 4)
+                .padding(.top, 18)
 
-            // ── Detail panel (hidden in compact mode) ─────────────────────────
+            heroSection
+                .padding(.horizontal, 18)
+                .padding(.top, settings.widgetSize == .compact ? 16 : 14)
+
             if settings.widgetSize != .compact {
-                Spacer(minLength: 12)
+                Spacer(minLength: 18)
                 detailPanel
-                Spacer().frame(height: 14)
+                Spacer().frame(height: 16)
 
-                // ── 3-day forecast (large mode only) ──────────────────────────
                 if settings.widgetSize == .large && !weather.forecast.isEmpty {
                     forecastRow
-                    Spacer().frame(height: 14)
+                    Spacer().frame(height: 16)
                 }
             } else {
                 Spacer()
             }
+        }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(WidgetPalette.tertiaryText)
+
+                Text(weather.city)
+                    .font(WidgetTypography.widgetTitle)
+                    .foregroundStyle(WidgetPalette.primaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            if viewModel.isLoading {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(0.55)
+                    .tint(WidgetPalette.secondaryText)
+                    .frame(width: 24, height: 24)
+            } else {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showSettings = true
+                    }
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(WidgetPalette.secondaryText)
+                        .frame(width: 28, height: 28)
+                        .background(MonochromeInsetBackground(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open settings")
+            }
+        }
+    }
+
+    private var heroSection: some View {
+        HStack(alignment: .bottom, spacing: 14) {
+            Image(systemName: WeatherViewModel.sfSymbol(for: weather.conditionCode))
+                .font(.system(size: settings.widgetSize == .compact ? 34 : 32, weight: .medium))
+                .symbolRenderingMode(.multicolor)
+                .shadow(color: .black.opacity(0.22), radius: 3, x: 0, y: 2)
+                .padding(.bottom, 10)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 1) {
+                    Text("\(Int(weather.temperature.rounded()))")
+                        .font(WidgetTypography.widgetHero)
+                        .foregroundStyle(WidgetPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Text("°")
+                        .font(WidgetTypography.widgetDegree)
+                        .foregroundStyle(WidgetPalette.secondaryText)
+                        .padding(.top, 12)
+                }
+
+                Text(weather.condition)
+                    .font(WidgetTypography.widgetCondition)
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .lineLimit(1)
+
+                Text(weather.highLowString)
+                    .font(WidgetTypography.widgetSubheadline)
+                    .foregroundStyle(WidgetPalette.tertiaryText)
+            }
+
+            Spacer(minLength: 0)
         }
     }
 
@@ -398,7 +414,7 @@ struct WeatherContent: View {
                     sunriseSunsetCell(icon: "sunset.fill",
                                       time: formatSunTime(weather.sunsetISO, use24h: settings.timeFormat.use24h))
                 }
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
             }
             .background(unifiedPanelBackground)
             .padding(.horizontal, 12)
@@ -430,7 +446,7 @@ struct WeatherContent: View {
                 ForecastDayView(day: day)
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background(unifiedPanelBackground)
         .padding(.horizontal, 12)
     }
@@ -448,7 +464,7 @@ struct WeatherContent: View {
                 DetailCellView(icon: item.0.icon, label: item.0.shortLabel, value: item.1)
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
     }
 
     private var rowDivider: some View {
@@ -461,41 +477,17 @@ struct WeatherContent: View {
     private func sunriseSunsetCell(icon: String, time: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 13))
+                .font(.system(size: 12, weight: .medium))
                 .symbolRenderingMode(.multicolor)
             Text(time)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(.white.opacity(0.85))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(WidgetPalette.secondaryText)
         }
         .frame(maxWidth: .infinity)
     }
 
     private var unifiedPanelBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.07))
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.08), location: 0),
-                            .init(color: .clear, location: 0.4),
-                        ],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.22), location: 0),
-                            .init(color: .white.opacity(0.07), location: 1),
-                        ],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
-        }
+        MonochromePanelBackground(cornerRadius: 18)
     }
 }
 
@@ -509,15 +501,15 @@ struct DetailCellView: View {
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 13))
+                .font(.system(size: 12, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.white.opacity(0.55))
+                .foregroundStyle(WidgetPalette.tertiaryText)
             Text(value)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(.white)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(WidgetPalette.primaryText)
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(.white.opacity(0.45))
+                .font(WidgetTypography.widgetCaption)
+                .foregroundStyle(WidgetPalette.quaternaryText)
                 .textCase(.uppercase)
                 .tracking(0.4)
         }
@@ -533,8 +525,8 @@ private struct ForecastDayView: View {
     var body: some View {
         VStack(spacing: 4) {
             Text(day.dayLabel)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.55))
+                .font(WidgetTypography.widgetCaption)
+                .foregroundStyle(WidgetPalette.quaternaryText)
                 .textCase(.uppercase)
                 .tracking(0.3)
             Image(systemName: WeatherViewModel.sfSymbol(for: day.conditionCode))
@@ -542,11 +534,11 @@ private struct ForecastDayView: View {
                 .symbolRenderingMode(.multicolor)
                 .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
             Text("H:\(Int(day.high.rounded()))°")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundColor(.white)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(WidgetPalette.primaryText)
             Text("L:\(Int(day.low.rounded()))°")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundColor(.white.opacity(0.5))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(WidgetPalette.tertiaryText)
         }
         .frame(maxWidth: .infinity)
     }
@@ -563,10 +555,10 @@ struct ErrorView: View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.wifi")
                 .font(.system(size: 36))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundStyle(WidgetPalette.tertiaryText)
             Text(message)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.6))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(WidgetPalette.secondaryText)
                 .multilineTextAlignment(.center)
             Button("Retry") {
                 Task { await viewModel.fetch() }
@@ -577,7 +569,7 @@ struct ErrorView: View {
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.35))
+                    .foregroundStyle(WidgetPalette.secondaryText)
             }
             .buttonStyle(.plain)
             .padding(.top, 4)
@@ -591,12 +583,15 @@ struct ErrorView: View {
 struct GlassButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .foregroundColor(.white)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(WidgetPalette.primaryText)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(Capsule().fill(.white.opacity(configuration.isPressed ? 0.18 : 0.10)))
-            .overlay(Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.5))
+            .background(
+                Capsule()
+                    .fill(configuration.isPressed ? WidgetPalette.pressedFill : WidgetPalette.surfaceSecondary)
+            )
+            .overlay(Capsule().strokeBorder(WidgetPalette.borderPrimary, lineWidth: 1))
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.spring(response: 0.2), value: configuration.isPressed)
     }

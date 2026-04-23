@@ -2,17 +2,6 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
-enum PreferencesPalette {
-    static let canvasTop = Color(red: 0.08, green: 0.12, blue: 0.21)
-    static let canvasBottom = Color(red: 0.03, green: 0.05, blue: 0.11)
-    static let cardFill = Color.white.opacity(0.08)
-    static let cardStroke = Color.white.opacity(0.14)
-    static let tileFill = Color.white.opacity(0.05)
-    static let tileStroke = Color.white.opacity(0.08)
-}
-
-// MARK: - Geocoding types
-
 struct GeocodingResult: Codable, Identifiable {
     let id: Int
     let name: String
@@ -25,8 +14,6 @@ struct GeocodingResult: Codable, Identifiable {
 struct GeocodingResponse: Codable {
     let results: [GeocodingResult]?
 }
-
-// MARK: - Pane Metadata
 
 enum PreferencesPane: String, CaseIterable, Hashable, Identifiable {
     case general, weather, about
@@ -43,30 +30,20 @@ enum PreferencesPane: String, CaseIterable, Hashable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .general: return "Choose how WeatherWidget appears and how you reach it."
-        case .weather: return "Control location, units, and the details you want on display."
-        case .about: return "Version details, links, and project credits."
+        case .general: return "Startup, placement, and widget behavior."
+        case .weather: return "Location, units, and visible weather details."
+        case .about: return "Version, links, and project credits."
         }
     }
 
     var icon: String {
         switch self {
         case .general: return "switch.2"
-        case .weather: return "cloud.sun.rain.fill"
-        case .about: return "sparkles.rectangle.stack.fill"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .general: return Color(red: 0.30, green: 0.68, blue: 1.0)
-        case .weather: return Color(red: 0.33, green: 0.86, blue: 0.77)
-        case .about: return Color(red: 1.0, green: 0.66, blue: 0.32)
+        case .weather: return "cloud.sun"
+        case .about: return "info.circle"
         }
     }
 }
-
-// MARK: - Root
 
 struct PreferencesView: View {
     @EnvironmentObject var settings: SettingsStore
@@ -76,14 +53,14 @@ struct PreferencesView: View {
         ZStack {
             PreferencesBackground()
 
-            HStack(spacing: 18) {
+            HStack(spacing: 20) {
                 PreferencesSidebar(selection: $selection)
-                    .frame(width: 250)
+                    .frame(width: 260)
 
                 PreferencesDetail(selection: selection)
                     .environmentObject(settings)
             }
-            .padding(20)
+            .padding(22)
         }
         .frame(minWidth: 760, minHeight: 540)
     }
@@ -91,29 +68,22 @@ struct PreferencesView: View {
 
 private struct PreferencesBackground: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [PreferencesPalette.canvasTop, PreferencesPalette.canvasBottom],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Circle()
-                .fill(Color.cyan.opacity(0.15))
-                .frame(width: 320, height: 320)
-                .blur(radius: 80)
-                .offset(x: -250, y: -180)
-            Circle()
-                .fill(Color.orange.opacity(0.12))
-                .frame(width: 340, height: 340)
-                .blur(radius: 110)
-                .offset(x: 340, y: -200)
-            Circle()
-                .fill(Color.blue.opacity(0.16))
-                .frame(width: 420, height: 420)
-                .blur(radius: 130)
-                .offset(x: 240, y: 260)
-        }
-        .ignoresSafeArea()
+        WidgetPalette.preferencesCanvas
+            .overlay(alignment: .topLeading) {
+                Circle()
+                    .fill(Color.white.opacity(0.04))
+                    .frame(width: 360, height: 360)
+                    .blur(radius: 90)
+                    .offset(x: -120, y: -140)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                Circle()
+                    .fill(Color.white.opacity(0.03))
+                    .frame(width: 320, height: 320)
+                    .blur(radius: 100)
+                    .offset(x: 120, y: 120)
+            }
+            .ignoresSafeArea()
     }
 }
 
@@ -121,19 +91,19 @@ private struct PreferencesSidebar: View {
     @Binding var selection: PreferencesPane
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("WeatherWidget", systemImage: "cloud.sun.fill")
-                    .font(.title3.bold())
-                    .foregroundStyle(.white)
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("WeatherWidget")
+                    .font(WidgetTypography.prefsSection)
+                    .foregroundStyle(WidgetPalette.primaryText)
 
-                Text("Refined controls for how the widget feels on your Mac.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.72))
+                Text("Refined controls for a cleaner, more Apple-like weather utility.")
+                    .font(WidgetTypography.prefsBody)
+                    .foregroundStyle(WidgetPalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 ForEach(PreferencesPane.allCases) { pane in
                     SidebarPaneButton(pane: pane, isSelected: selection == pane) {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
@@ -147,35 +117,22 @@ private struct PreferencesSidebar: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Quick tip")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.56))
+                    .font(WidgetTypography.prefsCaption)
+                    .foregroundStyle(WidgetPalette.quaternaryText)
                     .textCase(.uppercase)
+                    .tracking(0.8)
 
-                Text("Turning off the menu bar icon keeps the app available in your Dock so settings are still one click away.")
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.72))
+                Text("Turning off the menu bar icon keeps the app available in the Dock so settings are still one click away.")
+                    .font(WidgetTypography.prefsBody)
+                    .foregroundStyle(WidgetPalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-                    )
-            )
+            .padding(18)
+            .background(preferencesPanelBackground(cornerRadius: 24))
         }
-        .padding(20)
+        .padding(22)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(
-            RoundedRectangle(cornerRadius: 30)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 30)
-                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                )
-        )
+        .background(preferencesPanelBackground(cornerRadius: 30))
     }
 }
 
@@ -187,48 +144,36 @@ private struct SidebarPaneButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    pane.tint.opacity(isSelected ? 0.95 : 0.55),
-                                    pane.tint.opacity(isSelected ? 0.55 : 0.25),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    Image(systemName: pane.icon)
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 44, height: 44)
+                Image(systemName: pane.icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isSelected ? WidgetPalette.primaryText : WidgetPalette.secondaryText)
+                    .frame(width: 18, height: 18)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(pane.title)
-                        .font(.headline)
-                        .foregroundStyle(.white)
+                        .font(WidgetTypography.prefsRowTitle)
+                        .foregroundStyle(WidgetPalette.primaryText)
+
                     Text(pane.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(WidgetPalette.tertiaryText)
                         .lineLimit(2)
                 }
 
                 Spacer(minLength: 0)
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(isSelected ? Color.white.opacity(0.10) : Color.clear)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(isSelected ? WidgetPalette.selectedFill : Color.clear)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 22)
-                            .strokeBorder(Color.white.opacity(isSelected ? 0.16 : 0.05), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(isSelected ? WidgetPalette.borderPrimary : Color.clear, lineWidth: 1)
                     )
             )
         }
         .buttonStyle(.plain)
-        .contentShape(RoundedRectangle(cornerRadius: 22))
     }
 }
 
@@ -237,12 +182,7 @@ private struct PreferencesDetail: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 32)
-                .fill(Color.white.opacity(0.05))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 32)
-                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-                )
+            preferencesPanelBackground(cornerRadius: 32)
 
             Group {
                 switch selection {
@@ -254,6 +194,7 @@ private struct PreferencesDetail: View {
                     AboutPane()
                 }
             }
+            .padding(2)
         }
     }
 }
@@ -263,60 +204,33 @@ private struct PaneHeroCard: View {
     let badge: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 18) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(
-                        LinearGradient(
-                            colors: [pane.tint.opacity(0.95), pane.tint.opacity(0.35)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: pane.icon)
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 72, height: 72)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .frame(width: 28, height: 28)
+                    .background(preferencesTileBackground(cornerRadius: 14))
 
-            VStack(alignment: .leading, spacing: 8) {
                 Text(pane.title)
-                    .font(.largeTitle.bold())
-                    .foregroundStyle(.white)
-
-                Text(pane.subtitle)
-                    .font(.body)
-                    .foregroundStyle(.white.opacity(0.74))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(badge)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.white.opacity(0.10)))
+                    .font(WidgetTypography.prefsHero)
+                    .foregroundStyle(WidgetPalette.primaryText)
             }
 
-            Spacer(minLength: 0)
+            Text(pane.subtitle)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(WidgetPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(badge)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(WidgetPalette.primaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(preferencesTileBackground(cornerRadius: 999))
         }
         .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 30)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            pane.tint.opacity(0.22),
-                            Color.white.opacity(0.05),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 30)
-                        .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
-                )
-        )
+        .background(preferencesPanelBackground(cornerRadius: 28))
     }
 }
 
@@ -324,42 +238,31 @@ private struct SettingsCard<Content: View>: View {
     let title: String
     let subtitle: String
     let icon: String
-    let tint: Color
     let content: Content
 
-    init(
-        title: String,
-        subtitle: String,
-        icon: String,
-        tint: Color,
-        @ViewBuilder content: () -> Content
-    ) {
+    init(title: String, subtitle: String, icon: String, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.icon = icon
-        self.tint = tint
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(tint.opacity(0.16))
-                    Image(systemName: icon)
-                        .font(.headline)
-                        .foregroundStyle(tint)
-                }
-                .frame(width: 40, height: 40)
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .frame(width: 30, height: 30)
+                    .background(preferencesTileBackground(cornerRadius: 15))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.title3.bold())
-                        .foregroundStyle(.white)
+                        .font(WidgetTypography.prefsCardTitle)
+                        .foregroundStyle(WidgetPalette.primaryText)
                     Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.68))
+                        .font(WidgetTypography.prefsBody)
+                        .foregroundStyle(WidgetPalette.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -367,14 +270,7 @@ private struct SettingsCard<Content: View>: View {
             content
         }
         .padding(22)
-        .background(
-            RoundedRectangle(cornerRadius: 28)
-                .fill(PreferencesPalette.cardFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28)
-                        .strokeBorder(PreferencesPalette.cardStroke, lineWidth: 1)
-                )
-        )
+        .background(preferencesPanelBackground(cornerRadius: 26))
     }
 }
 
@@ -392,26 +288,19 @@ private struct SettingsControlBlock<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.headline)
-                .foregroundStyle(.white)
+                .font(WidgetTypography.prefsRowTitle)
+                .foregroundStyle(WidgetPalette.primaryText)
 
             Text(description)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.66))
+                .font(WidgetTypography.prefsBody)
+                .foregroundStyle(WidgetPalette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             content
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 22)
-                .fill(PreferencesPalette.tileFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22)
-                        .strokeBorder(PreferencesPalette.tileStroke, lineWidth: 1)
-                )
-        )
+        .background(preferencesTileBackground(cornerRadius: 22))
     }
 }
 
@@ -419,28 +308,24 @@ private struct SettingsToggleTile: View {
     let title: String
     let description: String
     let systemImage: String
-    let tint: Color
     @Binding var isOn: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(tint.opacity(0.18))
-                Image(systemName: systemImage)
-                    .font(.headline)
-                    .foregroundStyle(tint)
-            }
-            .frame(width: 40, height: 40)
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(WidgetPalette.secondaryText)
+                .frame(width: 30, height: 30)
+                .background(preferencesTileBackground(cornerRadius: 15))
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
-                    .font(.headline)
-                    .foregroundStyle(.white)
+                    .font(WidgetTypography.prefsRowTitle)
+                    .foregroundStyle(WidgetPalette.primaryText)
 
                 Text(description)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.66))
+                    .font(WidgetTypography.prefsBody)
+                    .foregroundStyle(WidgetPalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -449,17 +334,10 @@ private struct SettingsToggleTile: View {
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .tint(tint)
+                .tint(.white)
         }
         .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 22)
-                .fill(PreferencesPalette.tileFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22)
-                        .strokeBorder(PreferencesPalette.tileStroke, lineWidth: 1)
-                )
-        )
+        .background(preferencesTileBackground(cornerRadius: 22))
     }
 }
 
@@ -467,52 +345,39 @@ private struct SettingsLinkTile: View {
     let title: String
     let subtitle: String
     let systemImage: String
-    let tint: Color
     let url: String
 
     var body: some View {
         Link(destination: URL(string: url)!) {
             HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(tint.opacity(0.18))
-                    Image(systemName: systemImage)
-                        .font(.headline)
-                        .foregroundStyle(tint)
-                }
-                .frame(width: 40, height: 40)
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .frame(width: 30, height: 30)
+                    .background(preferencesTileBackground(cornerRadius: 15))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.headline)
-                        .foregroundStyle(.white)
+                        .font(WidgetTypography.prefsRowTitle)
+                        .foregroundStyle(WidgetPalette.primaryText)
                     Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.66))
+                        .font(WidgetTypography.prefsBody)
+                        .foregroundStyle(WidgetPalette.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "arrow.up.right")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(WidgetPalette.tertiaryText)
             }
             .padding(18)
-            .background(
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(PreferencesPalette.tileFill)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 22)
-                            .strokeBorder(PreferencesPalette.tileStroke, lineWidth: 1)
-                    )
-            )
+            .background(preferencesTileBackground(cornerRadius: 22))
         }
         .buttonStyle(.plain)
     }
 }
-
-// MARK: - General Pane
 
 struct GeneralPane: View {
     @EnvironmentObject var settings: SettingsStore
@@ -530,14 +395,12 @@ struct GeneralPane: View {
                 SettingsCard(
                     title: "Startup & Access",
                     subtitle: "Decide how WeatherWidget starts and where it stays accessible.",
-                    icon: "power.circle.fill",
-                    tint: .cyan
+                    icon: "power"
                 ) {
                     SettingsToggleTile(
                         title: "Launch at Login",
                         description: "Start WeatherWidget automatically when you sign in.",
                         systemImage: "power",
-                        tint: .cyan,
                         isOn: $launchAtLogin
                     )
                     .onChange(of: launchAtLogin) { enabled in
@@ -548,7 +411,6 @@ struct GeneralPane: View {
                         title: "Show Menu Bar Icon",
                         description: "Keep the weather icon in the menu bar. Turning this off keeps the app in your Dock so you can still reopen settings.",
                         systemImage: "menubar.rectangle",
-                        tint: .indigo,
                         isOn: $settings.showMenuBarIcon
                     )
 
@@ -556,22 +418,20 @@ struct GeneralPane: View {
                         title: "Hide After Unlock",
                         description: "Dismiss the floating widget after the screen unlocks.",
                         systemImage: "lock.open.display",
-                        tint: .orange,
                         isOn: $settings.autoHideOnUnlock
                     )
 
                     if let launchAtLoginError {
                         Text(launchAtLoginError)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.red.opacity(0.9))
                     }
                 }
 
                 SettingsCard(
                     title: "Placement",
                     subtitle: "Shape the widget and place it exactly where it feels at home.",
-                    icon: "macwindow.on.rectangle",
-                    tint: .blue
+                    icon: "macwindow"
                 ) {
                     SettingsControlBlock(
                         title: "Widget Size",
@@ -606,8 +466,7 @@ struct GeneralPane: View {
                 SettingsCard(
                     title: "Appearance & Refresh",
                     subtitle: "Balance atmosphere, translucency, and update rhythm.",
-                    icon: "dial.medium.fill",
-                    tint: .mint
+                    icon: "dial.medium"
                 ) {
                     SettingsControlBlock(
                         title: "Auto-Refresh",
@@ -641,16 +500,16 @@ struct GeneralPane: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
                                         Text("Opacity")
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(.white)
+                                            .font(WidgetTypography.prefsRowTitle)
+                                            .foregroundStyle(WidgetPalette.primaryText)
                                         Spacer()
                                         Text("\(Int(settings.frostedOpacity * 100))%")
-                                            .font(.subheadline.monospacedDigit())
-                                            .foregroundStyle(.white.opacity(0.72))
+                                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(WidgetPalette.secondaryText)
                                     }
 
                                     Slider(value: $settings.frostedOpacity, in: 0.3...1.0)
-                                        .tint(.white.opacity(0.86))
+                                        .tint(.white)
                                 }
                             }
                         }
@@ -680,8 +539,6 @@ struct GeneralPane: View {
     }
 }
 
-// MARK: - Widget Size helpers
-
 extension WidgetSize {
     var fullLabel: String {
         switch self {
@@ -700,29 +557,21 @@ extension WidgetSize {
     }
 }
 
-// MARK: - Position Picker
-
 struct PositionPickerRow: View {
     @Binding var selection: WidgetPosition
 
     var body: some View {
         HStack(spacing: 20) {
             ZStack {
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.09), Color.white.opacity(0.03)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(WidgetPalette.surfaceTertiary)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(WidgetPalette.borderSecondary, lineWidth: 1)
                     )
 
                 Rectangle()
-                    .fill(Color.white.opacity(0.12))
+                    .fill(WidgetPalette.divider)
                     .frame(height: 10)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
@@ -745,12 +594,12 @@ struct PositionPickerRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(selection.fullLabel)
-                    .font(.headline)
-                    .foregroundStyle(.white)
+                    .font(WidgetTypography.prefsRowTitle)
+                    .foregroundStyle(WidgetPalette.primaryText)
 
                 Text("Choose a corner to anchor the floating weather card.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.66))
+                    .font(WidgetTypography.prefsBody)
+                    .foregroundStyle(WidgetPalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -766,25 +615,26 @@ struct PositionPickerRow: View {
                 selection = pos
             }
         } label: {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.cyan : Color.white.opacity(0.22))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? WidgetPalette.selectedFill : WidgetPalette.surfacePrimary)
                 .frame(width: 34, height: 22)
                 .overlay {
                     if isSelected {
                         Image(systemName: "cloud.sun.fill")
                             .font(.caption.bold())
-                            .foregroundStyle(.white)
+                            .foregroundStyle(WidgetPalette.primaryText)
                     }
                 }
-                .shadow(color: isSelected ? Color.cyan.opacity(0.45) : .clear, radius: 8, x: 0, y: 4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(isSelected ? WidgetPalette.borderPrimary : WidgetPalette.borderSecondary, lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(pos.fullLabel))
         .help(pos.fullLabel)
     }
 }
-
-// MARK: - Screen Picker
 
 struct ScreenPickerRow: View {
     @Binding var selection: String
@@ -800,8 +650,6 @@ struct ScreenPickerRow: View {
         .tint(.white)
     }
 }
-
-// MARK: - Weather Pane
 
 struct WeatherPane: View {
     @EnvironmentObject var settings: SettingsStore
@@ -821,8 +669,7 @@ struct WeatherPane: View {
                 SettingsCard(
                     title: "Units",
                     subtitle: "Match the weather presentation to your habits and locale.",
-                    icon: "thermometer.medium",
-                    tint: .teal
+                    icon: "thermometer.medium"
                 ) {
                     SettingsControlBlock(
                         title: "Temperature",
@@ -867,8 +714,7 @@ struct WeatherPane: View {
                 SettingsCard(
                     title: "Visible Details",
                     subtitle: "Choose the supporting data points shown in the widget.",
-                    icon: "square.grid.2x2.fill",
-                    tint: .blue
+                    icon: "square.grid.2x2"
                 ) {
                     ForEach(DetailCell.allCases) { cell in
                         let isLast = settings.visibleDetailCells.count == 1 && settings.visibleDetailCells.contains(cell)
@@ -876,16 +722,16 @@ struct WeatherPane: View {
                             title: cell.label,
                             description: "Show \(cell.shortLabel.lowercased()) in the expanded weather details.",
                             systemImage: cell.icon,
-                            tint: .blue,
                             isOn: detailCellBinding(cell)
                         )
                         .opacity(isLast ? 0.5 : 1.0)
                         .disabled(isLast)
                     }
+
                     if settings.visibleDetailCells.count == 1 {
                         Text("At least one detail must remain visible.")
-                            .font(.footnote)
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(WidgetPalette.tertiaryText)
                             .padding(.horizontal, 4)
                             .padding(.top, 2)
                     }
@@ -894,8 +740,7 @@ struct WeatherPane: View {
                 SettingsCard(
                     title: "Data Sources",
                     subtitle: "WeatherWidget is intentionally lightweight and keyless.",
-                    icon: "externaldrive.fill.badge.checkmark",
-                    tint: .orange
+                    icon: "externaldrive"
                 ) {
                     SettingsControlBlock(
                         title: "Current Services",
@@ -906,8 +751,8 @@ struct WeatherPane: View {
                             Text("Geocoding: Open-Meteo")
                             Text("Automatic location: ipwho.is")
                         }
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.75))
+                        .font(WidgetTypography.prefsBody)
+                        .foregroundStyle(WidgetPalette.secondaryText)
                     }
                 }
             }
@@ -932,8 +777,6 @@ struct WeatherPane: View {
     }
 }
 
-// MARK: - Shared Location Search
-
 struct LocationSearchView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var searchText = ""
@@ -945,20 +788,33 @@ struct LocationSearchView: View {
         VStack(alignment: .leading, spacing: 12) {
             if !settings.manualCityName.isEmpty {
                 Text(settings.manualCityName)
-                    .font(.headline)
-                    .foregroundStyle(.white)
+                    .font(WidgetTypography.prefsRowTitle)
+                    .foregroundStyle(WidgetPalette.primaryText)
             }
 
             HStack(spacing: 10) {
                 TextField("Search city", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .font(WidgetTypography.prefsBody)
+                    .foregroundStyle(WidgetPalette.primaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(preferencesTileBackground(cornerRadius: 14))
                     .onSubmit { Task { await search() } }
 
-                Button("Search", systemImage: "magnifyingglass") {
+                Button("Search") {
                     Task { await search() }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.mint)
+                .buttonStyle(.plain)
+                .font(WidgetTypography.prefsRowTitle)
+                .foregroundStyle(WidgetPalette.primaryText)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(preferencesTileBackground(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(WidgetPalette.borderPrimary, lineWidth: 1)
+                )
                 .disabled(isSearching)
             }
 
@@ -967,13 +823,13 @@ struct LocationSearchView: View {
                     ProgressView()
                         .controlSize(.small)
                     Text("Searching…")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.66))
+                        .font(WidgetTypography.prefsBody)
+                        .foregroundStyle(WidgetPalette.secondaryText)
                 }
             } else if let searchError {
                 Text(searchError)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.9))
             } else if !results.isEmpty {
                 VStack(spacing: 10) {
                     ForEach(results) { result in
@@ -983,8 +839,8 @@ struct LocationSearchView: View {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(result.name)
-                                        .font(.headline)
-                                        .foregroundStyle(.white)
+                                        .font(WidgetTypography.prefsRowTitle)
+                                        .foregroundStyle(WidgetPalette.primaryText)
 
                                     let subtitle = [result.admin1, result.country]
                                         .compactMap { $0 }
@@ -992,8 +848,8 @@ struct LocationSearchView: View {
 
                                     if !subtitle.isEmpty {
                                         Text(subtitle)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.white.opacity(0.66))
+                                            .font(WidgetTypography.prefsBody)
+                                            .foregroundStyle(WidgetPalette.secondaryText)
                                     }
                                 }
 
@@ -1001,19 +857,13 @@ struct LocationSearchView: View {
 
                                 if settings.manualCityName == result.name &&
                                     abs(settings.manualLatitude - result.latitude) < 0.01 {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.mint)
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(WidgetPalette.primaryText)
                                 }
                             }
                             .padding(14)
-                            .background(
-                                RoundedRectangle(cornerRadius: 18)
-                                    .fill(Color.white.opacity(0.04))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 18)
-                                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                                    )
-                            )
+                            .background(preferencesTileBackground(cornerRadius: 18))
                         }
                         .buttonStyle(.plain)
                     }
@@ -1062,8 +912,6 @@ struct LocationSearchView: View {
     }
 }
 
-// MARK: - Location Settings Card
-
 private struct LocationSettingsCard: View {
     @EnvironmentObject var settings: SettingsStore
 
@@ -1071,8 +919,7 @@ private struct LocationSettingsCard: View {
         SettingsCard(
             title: "Location",
             subtitle: "Stay automatic, or search for a city and keep it pinned.",
-            icon: "location.fill",
-            tint: .mint
+            icon: "location"
         ) {
             SettingsControlBlock(
                 title: "Location Mode",
@@ -1101,22 +948,24 @@ private struct LocationSettingsCard: View {
     }
 }
 
-// MARK: - About Pane
-
 struct AboutPane: View {
+    private var versionBadge: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+        return "Version \(version)"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 PaneHeroCard(
                     pane: .about,
-                    badge: "Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–")"
+                    badge: versionBadge
                 )
 
                 SettingsCard(
                     title: "Project",
                     subtitle: "A lock-screen friendly weather companion for macOS.",
-                    icon: "cloud.sun.fill",
-                    tint: .orange
+                    icon: "cloud.sun"
                 ) {
                     SettingsControlBlock(
                         title: "WeatherWidget",
@@ -1124,15 +973,15 @@ struct AboutPane: View {
                     ) {
                         HStack(spacing: 12) {
                             Text("macOS")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(WidgetPalette.primaryText)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(Capsule().fill(Color.orange.opacity(0.18)))
+                                .background(preferencesTileBackground(cornerRadius: 999))
 
                             Text("MIT License")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.76))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(WidgetPalette.secondaryText)
                         }
                     }
                 }
@@ -1140,22 +989,19 @@ struct AboutPane: View {
                 SettingsCard(
                     title: "Links",
                     subtitle: "Source, support, and the services that make the app possible.",
-                    icon: "link.circle.fill",
-                    tint: .blue
+                    icon: "link"
                 ) {
                     SettingsLinkTile(
                         title: "View Source on GitHub",
                         subtitle: "Browse the repository and track development.",
                         systemImage: "chevron.left.forwardslash.chevron.right",
-                        tint: .blue,
                         url: "https://github.com/sam-cookr/WeatherWidget"
                     )
 
                     SettingsLinkTile(
                         title: "Report an Issue",
                         subtitle: "Open a bug report or feature request.",
-                        systemImage: "exclamationmark.bubble.fill",
-                        tint: .orange,
+                        systemImage: "exclamationmark.bubble",
                         url: "https://github.com/sam-cookr/WeatherWidget/issues"
                     )
                 }
@@ -1163,22 +1009,19 @@ struct AboutPane: View {
                 SettingsCard(
                     title: "Acknowledgements",
                     subtitle: "Thanks to the APIs and libraries behind the scenes.",
-                    icon: "heart.text.square.fill",
-                    tint: .mint
+                    icon: "heart.text.square"
                 ) {
                     SettingsLinkTile(
                         title: "Open-Meteo",
                         subtitle: "Weather and geocoding APIs.",
-                        systemImage: "cloud.fill",
-                        tint: .mint,
+                        systemImage: "cloud",
                         url: "https://open-meteo.com"
                     )
 
                     SettingsLinkTile(
                         title: "ipwho.is",
                         subtitle: "Automatic location lookup.",
-                        systemImage: "location.fill",
-                        tint: .indigo,
+                        systemImage: "location",
                         url: "https://ipwho.is"
                     )
 
@@ -1186,18 +1029,35 @@ struct AboutPane: View {
                         title: "SkyLightWindow",
                         subtitle: "Window placement support by Lakr233.",
                         systemImage: "macwindow",
-                        tint: .cyan,
                         url: "https://github.com/Lakr233/SkyLightWindow"
                     )
                 }
 
                 Text("MIT License · © 2026 Sam Cook")
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.62))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(WidgetPalette.tertiaryText)
                     .padding(.horizontal, 4)
             }
             .padding(24)
         }
         .scrollIndicators(.hidden)
     }
+}
+
+private func preferencesPanelBackground(cornerRadius: CGFloat) -> some View {
+    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .fill(WidgetPalette.preferencesPanel)
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(WidgetPalette.borderSecondary, lineWidth: 1)
+        )
+}
+
+private func preferencesTileBackground(cornerRadius: CGFloat) -> some View {
+    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .fill(WidgetPalette.preferencesTile)
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(WidgetPalette.borderSecondary, lineWidth: 1)
+        )
 }
