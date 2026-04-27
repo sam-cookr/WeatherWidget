@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>WeatherWidget Updates</title>
+        <description>Latest WeatherWidget releases.</description>
+        <language>en</language>
+        <item>
+            <title>WeatherWidget 1.10.2</title>
+            <link>https://github.com/sam-cookr/WeatherWidget/releases/tag/v1.10.2</link>
+            <sparkle:version>1102</sparkle:version>
+            <sparkle:shortVersionString>1.10.2</sparkle:shortVersionString>
+            <sparkle:releaseNotesLink>https://github.com/sam-cookr/WeatherWidget/releases/tag/v1.10.2</sparkle:releaseNotesLink>
+            <pubDate>Mon, 27 Apr 2026 21:17:50 +0000</pubDate>
+            <enclosure url="https://github.com/sam-cookr/WeatherWidget/releases/download/v1.10.2/WeatherWidget.dmg" length="2965012" type="application/x-apple-diskimage" sparkle:edSignature="3+9FA4lvLS2CQhwoU3paKLoKqs/FFaWecs/Ou9B6EtWZxTimv0cb2TarJKaJOnp4C22Ks+sSHB0uKjKwyNFPCA==" />
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        </item>
+    </channel>
+</rss>

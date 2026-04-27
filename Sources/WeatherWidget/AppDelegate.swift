@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import Sparkle
 import WidgetScreenCore
 import WidgetScreenWindowing
 
@@ -19,6 +20,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var isWidgetVisible = false
     private var toggleMenuItem: NSMenuItem?
     private var weatherInstanceID: UUID?
+    private lazy var updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     // MARK: - Launch
 
@@ -79,6 +85,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let updateItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        updateItem.target = updaterController
+        menu.addItem(updateItem)
+
         menu.addItem(.separator())
 
         menu.addItem(NSMenuItem(
@@ -106,6 +120,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openPreferences), keyEquivalent: ",")
         settingsItem.target = self
         appMenu.addItem(settingsItem)
+        let updateItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        updateItem.target = updaterController
+        appMenu.addItem(updateItem)
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(
             title: "Quit WeatherWidget",
@@ -273,9 +294,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.repositionWidgets()
-            WindowManager.shared.showAll()
-            self?.isWidgetVisible = true
-            self?.toggleMenuItem?.title = "Hide Widget"
+            WindowManager.shared.hideAll()
+            self?.isWidgetVisible = false
+            self?.toggleMenuItem?.title = "Show Widget"
         }
 
         Task { await vm.fetch() }

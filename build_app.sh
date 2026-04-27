@@ -3,9 +3,14 @@ set -e
 
 APP_NAME="WeatherWidget"
 BUNDLE_ID="com.samcooke.WeatherWidget"
-VERSION="1.10.1"
+VERSION="1.10.2"
+BUILD_NUMBER="1102"
 SIGN_ID="Developer ID Application: SAMUEL ROBERT COOK (56GYTHWZCC)"
 NOTARIZE_PROFILE="notarytool-creds"
+SPARKLE_ACCOUNT="com.samcooke.WeatherWidget"
+SPARKLE_PUBLIC_KEY="1Q0tDyjW02VRZ4Q/fiE7ixKqbRI5bN1xUmd2yFYw1o4="
+APPCAST_URL="https://github.com/sam-cookr/WeatherWidget/releases/latest/download/appcast.xml"
+DOWNLOAD_URL="https://github.com/sam-cookr/WeatherWidget/releases/download/v$VERSION/WeatherWidget.dmg"
 
 # ── Build ──────────────────────────────────────────────────────────────────
 echo "==> Building $APP_NAME $VERSION (release)..."
@@ -35,8 +40,13 @@ APP_DIR="$APP_NAME.app"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
+mkdir -p "$APP_DIR/Contents/Frameworks"
 
 cp "$RELEASE_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/"
+if [ -d "$RELEASE_DIR/Sparkle.framework" ]; then
+    ditto "$RELEASE_DIR/Sparkle.framework" "$APP_DIR/Contents/Frameworks/Sparkle.framework"
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_DIR/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+fi
 cp icon.icns "$APP_DIR/Contents/Resources/"
 rm icon.icns
 
@@ -57,12 +67,20 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>$VERSION</string>
+    <key>CFBundleVersion</key>
+    <string>$BUILD_NUMBER</string>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUFeedURL</key>
+    <string>$APPCAST_URL</string>
+    <key>SUPublicEDKey</key>
+    <string>$SPARKLE_PUBLIC_KEY</string>
 </dict>
 </plist>
 EOF
@@ -150,9 +168,39 @@ xcrun notarytool submit "$DMG_NAME" \
 echo "==> Stapling notarization ticket..."
 xcrun stapler staple "$DMG_NAME"
 
+echo "==> Generating Sparkle appcast..."
+SPARKLE_SIGN_OUTPUT=$(.build/artifacts/sparkle/Sparkle/bin/sign_update \
+    --account "$SPARKLE_ACCOUNT" \
+    "$DMG_NAME")
+SPARKLE_SIGNATURE=$(printf '%s\n' "$SPARKLE_SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+SPARKLE_LENGTH=$(printf '%s\n' "$SPARKLE_SIGN_OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
+PUB_DATE=$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")
+
+cat > appcast.xml <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>WeatherWidget Updates</title>
+        <description>Latest WeatherWidget releases.</description>
+        <language>en</language>
+        <item>
+            <title>WeatherWidget $VERSION</title>
+            <link>https://github.com/sam-cookr/WeatherWidget/releases/tag/v$VERSION</link>
+            <sparkle:version>$BUILD_NUMBER</sparkle:version>
+            <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+            <sparkle:releaseNotesLink>https://github.com/sam-cookr/WeatherWidget/releases/tag/v$VERSION</sparkle:releaseNotesLink>
+            <pubDate>$PUB_DATE</pubDate>
+            <enclosure url="$DOWNLOAD_URL" length="$SPARKLE_LENGTH" type="application/x-apple-diskimage" sparkle:edSignature="$SPARKLE_SIGNATURE" />
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        </item>
+    </channel>
+</rss>
+EOF
+
 echo ""
 echo "Done!"
 echo "  App bundle : $APP_DIR"
 echo "  Disk image : $DMG_NAME (notarized + stapled)"
+echo "  Appcast    : appcast.xml"
 echo ""
 echo "To install: open $DMG_NAME and drag $APP_NAME to Applications."
