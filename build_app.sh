@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="WeatherWidget"
 BUNDLE_ID="com.samcooke.WeatherWidget"
-VERSION="1.10.0"
+VERSION="1.10.1"
 SIGN_ID="Developer ID Application: SAMUEL ROBERT COOK (56GYTHWZCC)"
 NOTARIZE_PROFILE="notarytool-creds"
 
@@ -139,6 +139,9 @@ hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_NAME"
 rm -f "$RW_DMG" dmg_background.png
 
 # ── Notarize + staple ──────────────────────────────────────────────────────
+echo "==> Code signing $DMG_NAME..."
+codesign --force --sign "$SIGN_ID" "$DMG_NAME"
+
 echo "==> Submitting $DMG_NAME to Apple notary service (this may take a minute)..."
 xcrun notarytool submit "$DMG_NAME" \
     --keychain-profile "$NOTARIZE_PROFILE" \

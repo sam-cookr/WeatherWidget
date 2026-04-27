@@ -1,14 +1,14 @@
 import AppKit
 import SwiftUI
-import SkyLightWindow
 import Combine
-import Darwin
+import WidgetScreenCore
+import WidgetScreenWindowing
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Properties
 
-    var floatingWindow: NSWindow?
     var viewModel: WeatherViewModel?
     let settings = SettingsStore()
 
@@ -18,16 +18,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var isWidgetVisible = false
     private var toggleMenuItem: NSMenuItem?
+    private var weatherInstanceID: UUID?
 
     // MARK: - Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupApplicationMenu()
         setupMenuBar()
-        setupFloatingWindow()
-        registerScreenNotifications()
+        setupWidget()
         observeSettings()
         applyInterfaceMode()
+
+        SkyLightCoordinator.shared.registerNotifications(
+            onObscured: { [weak self] in self?.screenObscured() },
+            onRevealed: { [weak self] in self?.screenRevealed() },
+            onWake:     { [weak self] in
+                guard let vm = self?.viewModel else { return }
+                Task { await vm.fetch(force: true) }
+            }
+        )
 
         if !UserDefaults.standard.bool(forKey: "ww.onboardingComplete") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.openOnboarding() }
@@ -38,11 +47,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default().removeObserver(self)
     }
 
-    /// Opens Settings when the user re-activates the app (e.g. double-clicks in Finder or Spotlight).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if !hasVisibleWindows {
-            openPreferences()
-        }
+        if !hasVisibleWindows { openPreferences() }
         return true
     }
 
@@ -62,33 +68,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        let toggle = NSMenuItem(
-            title: "Show Widget",
-            action: #selector(toggleWidget),
-            keyEquivalent: "w"
-        )
+        let toggle = NSMenuItem(title: "Show Widget", action: #selector(toggleWidget), keyEquivalent: "w")
         toggle.target = self
         menu.addItem(toggle)
         toggleMenuItem = toggle
 
         menu.addItem(.separator())
 
-        let settingsItem = NSMenuItem(
-            title: "Settings…",
-            action: #selector(openPreferences),
-            keyEquivalent: ","
-        )
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openPreferences), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(
+        menu.addItem(NSMenuItem(
             title: "Quit WeatherWidget",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
-        )
-        menu.addItem(quitItem)
+        ))
 
         statusItem?.menu = menu
     }
@@ -102,53 +99,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupApplicationMenu() {
         let mainMenu = NSMenu()
-
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
 
         let appMenu = NSMenu()
-
-        let settingsItem = NSMenuItem(
-            title: "Settings…",
-            action: #selector(openPreferences),
-            keyEquivalent: ","
-        )
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openPreferences), keyEquivalent: ",")
         settingsItem.target = self
         appMenu.addItem(settingsItem)
         appMenu.addItem(.separator())
-
-        let quitItem = NSMenuItem(
+        appMenu.addItem(NSMenuItem(
             title: "Quit WeatherWidget",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
-        )
-        appMenu.addItem(quitItem)
-
+        ))
         appMenuItem.submenu = appMenu
         NSApp.mainMenu = mainMenu
     }
 
     private func applyInterfaceMode() {
         NSApp.setActivationPolicy(.accessory)
-
-        if settings.showMenuBarIcon {
-            setupMenuBar()
-        } else {
-            tearDownMenuBar()
-        }
+        settings.showMenuBarIcon ? setupMenuBar() : tearDownMenuBar()
     }
 
     // MARK: - Widget Toggle
 
     @objc func toggleWidget() {
+        guard let id = weatherInstanceID, let win = WindowManager.shared.window(for: id) else { return }
         if isWidgetVisible {
-            floatingWindow?.orderOut(nil)
+            win.hide()
             isWidgetVisible = false
             toggleMenuItem?.title = "Show Widget"
         } else {
-            guard let w = floatingWindow, let screen = selectedScreen else { return }
-            w.setFrameOrigin(origin(for: settings.position, windowSize: w.frame.size, screen: screen))
-            w.makeKeyAndOrderFront(nil)
+            repositionWidgets()
+            win.show()
             isWidgetVisible = true
             toggleMenuItem?.title = "Hide Widget"
         }
@@ -158,38 +141,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func openPreferences() {
         if preferencesWindow == nil {
-            let view = PreferencesView()
-                .environmentObject(settings)
+            let view = PreferencesView().environmentObject(settings)
             let vc = NSHostingController(rootView: view)
             let win = NSWindow(contentViewController: vc)
             win.title = "WeatherWidget"
             win.styleMask = [.titled, .closable, .miniaturizable]
-            win.setContentSize(NSSize(width: 720, height: 480))
+            win.setContentSize(NSSize(width: 960, height: 540))
             win.center()
             win.isReleasedWhenClosed = false
-            win.minSize = NSSize(width: 620, height: 400)
+            win.minSize = NSSize(width: 820, height: 480)
             win.appearance = NSAppearance(named: .darkAqua)
-
             NotificationCenter.default.addObserver(
-                forName: NSWindow.willCloseNotification,
-                object: win,
-                queue: .main
-            ) { [weak self] _ in self?.preferencesWindow = nil }
-
+                forName: NSWindow.willCloseNotification, object: win, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.preferencesWindow = nil
+                    self?.applyInterfaceMode()
+                }
+            }
             preferencesWindow = win
         }
-        preferencesWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        presentUserWindow(preferencesWindow)
     }
 
     // MARK: - Onboarding Window
 
     func openOnboarding() {
         if onboardingWindow == nil {
-            let view = OnboardingView {
-                self.onboardingWindow?.close()
-            }
-            .environmentObject(settings)
+            let view = OnboardingView { self.onboardingWindow?.close() }
+                .environmentObject(settings)
             let vc = NSHostingController(rootView: view)
             let win = NSWindow(contentViewController: vc)
             win.styleMask = [.titled, .closable, .fullSizeContentView]
@@ -200,22 +180,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             win.center()
             win.isReleasedWhenClosed = false
             win.appearance = NSAppearance(named: .darkAqua)
-
+            win.level = .floating
+            win.collectionBehavior = [.moveToActiveSpace]
             NotificationCenter.default.addObserver(
-                forName: NSWindow.willCloseNotification,
-                object: win,
-                queue: .main
+                forName: NSWindow.willCloseNotification, object: win, queue: .main
             ) { [weak self] _ in
-                // Mark complete if dismissed early — prevents re-showing on every launch
-                if !UserDefaults.standard.bool(forKey: "ww.onboardingComplete") {
-                    UserDefaults.standard.set(true, forKey: "ww.onboardingComplete")
+                Task { @MainActor [weak self] in
+                    if !UserDefaults.standard.bool(forKey: "ww.onboardingComplete") {
+                        UserDefaults.standard.set(true, forKey: "ww.onboardingComplete")
+                    }
+                    self?.onboardingWindow = nil
+                    self?.applyInterfaceMode()
                 }
-                self?.onboardingWindow = nil
             }
-
             onboardingWindow = win
         }
-        onboardingWindow?.makeKeyAndOrderFront(nil)
+        presentUserWindow(onboardingWindow)
+    }
+
+    private func presentUserWindow(_ window: NSWindow?) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -223,107 +210,72 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func observeSettings() {
         settings.$position
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] pos in self?.repositionWindow(to: pos) }
+            .dropFirst().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.repositionWidgets() }
             .store(in: &cancellables)
 
         settings.$widgetSize
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] size in self?.resizeWidget(to: size) }
+            .dropFirst().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.repositionWidgets() }
             .store(in: &cancellables)
 
         settings.$targetScreenName
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.repositionWindow(to: self.settings.position)
-            }
+            .dropFirst().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.repositionWidgets() }
             .store(in: &cancellables)
 
         settings.$showMenuBarIcon
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyInterfaceMode()
-            }
+            .dropFirst().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.applyInterfaceMode() }
             .store(in: &cancellables)
     }
 
-    // MARK: - Screen Lock / Screensaver
+    // MARK: - Screen Lock / Wake
 
-    private func registerScreenNotifications() {
-        let dnc = DistributedNotificationCenter.default()
-        dnc.addObserver(self, selector: #selector(screenObscured),
-                        name: NSNotification.Name("com.apple.screensaver.didstart"), object: nil)
-        dnc.addObserver(self, selector: #selector(screenObscured),
-                        name: NSNotification.Name("com.apple.screenIsLocked"),       object: nil)
-        dnc.addObserver(self, selector: #selector(screenRevealed),
-                        name: NSNotification.Name("com.apple.screensaver.didstop"),  object: nil)
-        dnc.addObserver(self, selector: #selector(screenRevealed),
-                        name: NSNotification.Name("com.apple.screenIsUnlocked"),     object: nil)
-    }
-
-    @objc private func screenObscured() {
+    private func screenObscured() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, let window = self.floatingWindow, let screen = self.selectedScreen else { return }
-            window.makeKeyAndOrderFront(nil)
-            window.setFrameOrigin(self.origin(for: self.settings.position,
-                                              windowSize: window.frame.size,
-                                              screen: screen))
+            self?.repositionWidgets()
+            WindowManager.shared.showAll()
         }
     }
 
-    @objc private func screenRevealed() {
+    private func screenRevealed() {
         guard settings.autoHideOnUnlock else { return }
-        floatingWindow?.orderOut(nil)
+        WindowManager.shared.hideAll()
         isWidgetVisible = false
         toggleMenuItem?.title = "Show Widget"
     }
 
-    // MARK: - Floating Widget Window
+    // MARK: - Widget Window Setup
 
-    @MainActor private func setupFloatingWindow() {
+    @MainActor private func setupWidget() {
         let vm = WeatherViewModel(settings: settings)
         self.viewModel = vm
 
-        let hosting = NSHostingController(
-            rootView: WeatherView(viewModel: vm).environmentObject(settings)
-        )
+        // Seed LayoutStore with a single weather instance if empty.
+        if LayoutStore.shared.instances.isEmpty {
+            let instance = WidgetInstance(typeID: "weather", size: .medium, gridOrigin: .zero)
+            weatherInstanceID = instance.id
+            LayoutStore.shared.add(instance)
+        } else {
+            weatherInstanceID = LayoutStore.shared.instances.first?.id
+        }
 
-        let size = settings.widgetSize.windowSize
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
-            styleMask:   [.borderless, .fullSizeContentView],
-            backing:     .buffered,
-            defer:       false
+        WindowManager.shared.configure(
+            viewFactory: { [weak self] _ in
+                guard let self else { return AnyView(EmptyView()) }
+                return AnyView(WeatherView(viewModel: vm).environmentObject(self.settings))
+            },
+            sizeProvider: { [weak self] _ in
+                self?.settings.widgetSize.windowSize ?? CGSize(width: 320, height: 180)
+            }
         )
-        window.contentViewController        = hosting
-        window.isOpaque                     = false
-        window.backgroundColor              = .clear
-        window.hasShadow                    = false
-        window.titleVisibility              = .hidden
-        window.titlebarAppearsTransparent   = true
-        window.isMovable                    = false
-        window.canBecomeVisibleWithoutLogin = true
-        window.level = .init(rawValue: .init(Int32.max - 2))
-        window.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
-        window.isReleasedWhenClosed = false
-        window.contentView?.wantsLayer = true
-        window.contentView?.layer?.cornerRadius = 28
-        window.contentView?.layer?.cornerCurve = .continuous
-        window.contentView?.layer?.masksToBounds = true
-
-        delegateWindowToSkySpace(window)
-        floatingWindow = window
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self, let w = self.floatingWindow, let screen = self.selectedScreen else { return }
-            w.setFrameOrigin(self.origin(for: self.settings.position,
-                                         windowSize: w.frame.size,
-                                         screen: screen))
+            self?.repositionWidgets()
+            WindowManager.shared.showAll()
+            self?.isWidgetVisible = true
+            self?.toggleMenuItem?.title = "Hide Widget"
         }
 
         Task { await vm.fetch() }
@@ -337,66 +289,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return NSScreen.screens.first { $0.localizedName == name } ?? NSScreen.main
     }
 
-    private func repositionWindow(to position: WidgetPosition) {
-        guard let window = floatingWindow, let screen = selectedScreen else { return }
-        window.setFrameOrigin(origin(for: position, windowSize: window.frame.size, screen: screen))
-    }
-
-    private func resizeWidget(to size: WidgetSize) {
-        guard let window = floatingWindow, let screen = selectedScreen else { return }
-        let newSize = size.windowSize
-        window.setContentSize(newSize)
-        // Update corner mask to match new size
-        window.contentView?.layer?.cornerRadius = 28
-        window.setFrameOrigin(origin(for: settings.position, windowSize: newSize, screen: screen))
+    private func repositionWidgets() {
+        guard let screen = selectedScreen else { return }
+        WindowManager.shared.repositionAll(
+            origin: { [weak self] _ in
+                guard let self else { return .zero }
+                return self.origin(for: self.settings.position,
+                                   windowSize: self.settings.widgetSize.windowSize,
+                                   screen: screen)
+            },
+            size: { [weak self] _ in
+                self?.settings.widgetSize.windowSize ?? CGSize(width: 320, height: 180)
+            }
+        )
     }
 
     private func origin(for position: WidgetPosition, windowSize: CGSize, screen: NSScreen) -> NSPoint {
         let f = screen.frame
         let margin: CGFloat = 20
-        let w = windowSize.width
-        let h = windowSize.height
         switch position {
-        case .topRight:    return NSPoint(x: f.maxX - w - margin, y: f.maxY - h - margin)
-        case .topLeft:     return NSPoint(x: f.minX + margin,     y: f.maxY - h - margin)
-        case .bottomRight: return NSPoint(x: f.maxX - w - margin, y: f.minY + margin)
-        case .bottomLeft:  return NSPoint(x: f.minX + margin,     y: f.minY + margin)
+        case .topRight:    return NSPoint(x: f.maxX - windowSize.width  - margin, y: f.maxY - windowSize.height - margin)
+        case .topLeft:     return NSPoint(x: f.minX + margin,                     y: f.maxY - windowSize.height - margin)
+        case .bottomRight: return NSPoint(x: f.maxX - windowSize.width  - margin, y: f.minY + margin)
+        case .bottomLeft:  return NSPoint(x: f.minX + margin,                     y: f.minY + margin)
         }
-    }
-
-    // MARK: - SkyLight Space Placement
-    //
-    // Places the window in a SkyLight compositor space at level 300, which makes it
-    // visible on the macOS lock screen without Screen Recording permission.
-
-    private func delegateWindowToSkySpace(_ window: NSWindow) {
-        typealias ConnectionID = @convention(c) () -> Int32
-        typealias SpaceCreate  = @convention(c) (Int32, Int32, Int32) -> Int32
-        typealias SpaceLevel   = @convention(c) (Int32, Int32, Int32) -> Int32
-        typealias ShowSpaces   = @convention(c) (Int32, CFArray) -> Int32
-        typealias AddWindows   = @convention(c) (Int32, Int32, CFArray, Int32) -> Int32
-
-        guard
-            let lib       = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight", RTLD_NOW),
-            let symConn   = dlsym(lib, "SLSMainConnectionID"),
-            let symCreate = dlsym(lib, "SLSSpaceCreate"),
-            let symLevel  = dlsym(lib, "SLSSpaceSetAbsoluteLevel"),
-            let symShow   = dlsym(lib, "SLSShowSpaces"),
-            let symAdd    = dlsym(lib, "SLSSpaceAddWindowsAndRemoveFromSpaces")
-        else {
-            SkyLightOperator.shared.delegateWindow(window)
-            return
-        }
-
-        let conn   = unsafeBitCast(symConn,   to: ConnectionID.self)()
-        let create = unsafeBitCast(symCreate,  to: SpaceCreate.self)
-        let level  = unsafeBitCast(symLevel,   to: SpaceLevel.self)
-        let show   = unsafeBitCast(symShow,    to: ShowSpaces.self)
-        let add    = unsafeBitCast(symAdd,     to: AddWindows.self)
-
-        let space = create(conn, 1, 0)
-        _ = level(conn, space, 300)
-        _ = show(conn, [space] as CFArray)
-        _ = add(conn, space, [window.windowNumber] as CFArray, 7)
     }
 }

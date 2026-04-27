@@ -1,3 +1,4 @@
+import WidgetScreenCore
 import SwiftUI
 import AppKit
 import ServiceManagement
@@ -53,51 +54,73 @@ struct PreferencesView: View {
         ZStack {
             PreferencesBackground()
 
-            HStack(spacing: 20) {
+            HStack(spacing: PreferencesChrome.columnSpacing) {
                 PreferencesSidebar(selection: $selection)
-                    .frame(width: 260)
+                    .frame(width: PreferencesChrome.sidebarWidth)
 
                 PreferencesDetail(selection: selection)
                     .environmentObject(settings)
+                    .frame(maxWidth: .infinity)
+
+                LivePreviewPane()
+                    .environmentObject(settings)
+                    .frame(width: PreferencesChrome.previewWidth)
             }
-            .padding(22)
+            .padding(PreferencesChrome.windowPadding)
         }
-        .frame(minWidth: 760, minHeight: 540)
+        .frame(minWidth: 960, minHeight: 540)
     }
+}
+
+private enum PreferencesChrome {
+    static let windowPadding: CGFloat = 18
+    static let columnSpacing: CGFloat = 16
+    static let sidebarWidth: CGFloat = 236
+    static let previewWidth: CGFloat = 236
+    static let panelRadius: CGFloat = 26
+    static let tileRadius: CGFloat = 16
+    static let rowPadding = EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14)
 }
 
 private struct PreferencesBackground: View {
     var body: some View {
-        WidgetPalette.preferencesCanvas
-            .overlay(alignment: .topLeading) {
-                Circle()
-                    .fill(Color.white.opacity(0.04))
-                    .frame(width: 360, height: 360)
-                    .blur(radius: 90)
-                    .offset(x: -120, y: -140)
+        LinearGradient(
+            colors: [
+                Color(red: 0.085, green: 0.087, blue: 0.096),
+                Color(red: 0.035, green: 0.036, blue: 0.042),
+                Color.black.opacity(0.98),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+            .overlay {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.18)
             }
-            .overlay(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(Color.white.opacity(0.03))
-                    .frame(width: 320, height: 320)
-                    .blur(radius: 100)
-                    .offset(x: 120, y: 120)
-            }
+            .overlay(
+                LinearGradient(
+                    colors: [.white.opacity(0.05), .clear, .black.opacity(0.22)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
             .ignoresSafeArea()
     }
 }
 
 private struct PreferencesSidebar: View {
     @Binding var selection: PreferencesPane
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("WeatherWidget")
-                    .font(WidgetTypography.prefsSection)
+                    .font(.system(size: 21, weight: .bold))
                     .foregroundStyle(WidgetPalette.primaryText)
 
-                Text("Refined controls for a cleaner, more Apple-like weather utility.")
+                Text("Lock-screen weather, tuned quietly.")
                     .font(WidgetTypography.prefsBody)
                     .foregroundStyle(WidgetPalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -106,7 +129,7 @@ private struct PreferencesSidebar: View {
             VStack(spacing: 8) {
                 ForEach(PreferencesPane.allCases) { pane in
                     SidebarPaneButton(pane: pane, isSelected: selection == pane) {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        withAnimation(Motion.spring(Motion.defaultSpring, reduceMotion: reduceMotion)) {
                             selection = pane
                         }
                     }
@@ -115,24 +138,22 @@ private struct PreferencesSidebar: View {
 
             Spacer()
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Quick tip")
-                    .font(WidgetTypography.prefsCaption)
-                    .foregroundStyle(WidgetPalette.quaternaryText)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-
-                Text("Turning off the menu bar icon keeps the app available in the Dock so settings are still one click away.")
-                    .font(WidgetTypography.prefsBody)
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Live Preview", systemImage: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(WidgetPalette.secondaryText)
+
+                Text("Changes update the preview immediately.")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(WidgetPalette.tertiaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(18)
-            .background(preferencesPanelBackground(cornerRadius: 24))
+            .padding(14)
+            .background(preferencesTileBackground(cornerRadius: PreferencesChrome.tileRadius))
         }
-        .padding(22)
+        .padding(18)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(preferencesPanelBackground(cornerRadius: 30))
+        .background(preferencesPanelBackground(cornerRadius: PreferencesChrome.panelRadius))
     }
 }
 
@@ -140,6 +161,7 @@ private struct SidebarPaneButton: View {
     let pane: PreferencesPane
     let isSelected: Bool
     let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
@@ -162,18 +184,24 @@ private struct SidebarPaneButton: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(isSelected ? WidgetPalette.selectedFill : Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(isSelected ? WidgetPalette.borderPrimary : Color.clear, lineWidth: 1)
-                    )
-            )
+            .padding(.horizontal, 13)
+            .padding(.vertical, 11)
+            .background(sidebarItemBackground)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(pane.title)
+    }
+
+    private var sidebarItemBackground: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(isSelected ? Color.white.opacity(0.16) : Color.white.opacity(isHovering ? 0.055 : 0.0))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isSelected ? Color.white.opacity(0.18) : Color.white.opacity(isHovering ? 0.08 : 0), lineWidth: 1)
+            )
+            .shadow(color: isSelected ? .black.opacity(0.26) : .clear, radius: 10, x: 0, y: 6)
     }
 }
 
@@ -182,7 +210,7 @@ private struct PreferencesDetail: View {
 
     var body: some View {
         ZStack {
-            preferencesPanelBackground(cornerRadius: 32)
+            preferencesPanelBackground(cornerRadius: PreferencesChrome.panelRadius)
 
             Group {
                 switch selection {
@@ -194,8 +222,9 @@ private struct PreferencesDetail: View {
                     AboutPane()
                 }
             }
-            .padding(2)
+            .transition(.opacity)
         }
+        .animation(Motion.defaultSpring, value: selection)
     }
 }
 
@@ -204,33 +233,39 @@ private struct PaneHeroCard: View {
     let badge: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: pane.icon)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(WidgetPalette.secondaryText)
-                    .frame(width: 28, height: 28)
-                    .background(preferencesTileBackground(cornerRadius: 14))
+                    .frame(width: 32, height: 32)
+                    .background(preferencesInsetBackground(cornerRadius: 13))
 
-                Text(pane.title)
-                    .font(WidgetTypography.prefsHero)
-                    .foregroundStyle(WidgetPalette.primaryText)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(pane.title)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(WidgetPalette.primaryText)
+
+                    Text(pane.subtitle)
+                        .font(WidgetTypography.prefsBody)
+                        .foregroundStyle(WidgetPalette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
-            Text(pane.subtitle)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(WidgetPalette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 12)
 
             Text(badge)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(WidgetPalette.primaryText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(preferencesTileBackground(cornerRadius: 999))
+                .background(preferencesInsetBackground(cornerRadius: 999))
+                .lineLimit(1)
         }
-        .padding(24)
-        .background(preferencesPanelBackground(cornerRadius: 28))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .background(preferencesTileBackground(cornerRadius: 20))
     }
 }
 
@@ -248,29 +283,29 @@ private struct SettingsCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 11) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(WidgetPalette.secondaryText)
-                    .frame(width: 30, height: 30)
-                    .background(preferencesTileBackground(cornerRadius: 15))
+                    .frame(width: 28, height: 28)
+                    .background(preferencesInsetBackground(cornerRadius: 12))
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(WidgetTypography.prefsCardTitle)
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(WidgetPalette.primaryText)
                     Text(subtitle)
-                        .font(WidgetTypography.prefsBody)
-                        .foregroundStyle(WidgetPalette.secondaryText)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(WidgetPalette.tertiaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             content
         }
-        .padding(22)
-        .background(preferencesPanelBackground(cornerRadius: 26))
+        .padding(16)
+        .background(preferencesTileBackground(cornerRadius: 20))
     }
 }
 
@@ -286,58 +321,21 @@ private struct SettingsControlBlock<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(WidgetTypography.prefsRowTitle)
                 .foregroundStyle(WidgetPalette.primaryText)
 
             Text(description)
-                .font(WidgetTypography.prefsBody)
-                .foregroundStyle(WidgetPalette.secondaryText)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(WidgetPalette.tertiaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             content
         }
-        .padding(18)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(preferencesTileBackground(cornerRadius: 22))
-    }
-}
-
-private struct SettingsToggleTile: View {
-    let title: String
-    let description: String
-    let systemImage: String
-    @Binding var isOn: Bool
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(WidgetPalette.secondaryText)
-                .frame(width: 30, height: 30)
-                .background(preferencesTileBackground(cornerRadius: 15))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(WidgetTypography.prefsRowTitle)
-                    .foregroundStyle(WidgetPalette.primaryText)
-
-                Text(description)
-                    .font(WidgetTypography.prefsBody)
-                    .foregroundStyle(WidgetPalette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-
-            Toggle(title, isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(.white)
-        }
-        .padding(18)
-        .background(preferencesTileBackground(cornerRadius: 22))
+        .background(preferencesInsetBackground(cornerRadius: PreferencesChrome.tileRadius))
     }
 }
 
@@ -346,6 +344,7 @@ private struct SettingsLinkTile: View {
     let subtitle: String
     let systemImage: String
     let url: String
+    @State private var isHovering = false
 
     var body: some View {
         Link(destination: URL(string: url)!) {
@@ -354,7 +353,7 @@ private struct SettingsLinkTile: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(WidgetPalette.secondaryText)
                     .frame(width: 30, height: 30)
-                    .background(preferencesTileBackground(cornerRadius: 15))
+                    .background(preferencesInsetBackground(cornerRadius: 13))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -370,12 +369,92 @@ private struct SettingsLinkTile: View {
 
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(WidgetPalette.tertiaryText)
+                    .foregroundStyle(isHovering ? WidgetPalette.secondaryText : WidgetPalette.tertiaryText)
             }
-            .padding(18)
-            .background(preferencesTileBackground(cornerRadius: 22))
+            .padding(PreferencesChrome.rowPadding)
+            .background(preferencesInteractiveTileBackground(isHovering: isHovering, cornerRadius: PreferencesChrome.tileRadius))
+            .contentShape(RoundedRectangle(cornerRadius: PreferencesChrome.tileRadius, style: .continuous))
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
+/// Replaces SettingsCard for groups that don't need full-card chrome.
+/// Renders a typed section title + hairline, then the content.
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text(title.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(WidgetPalette.tertiaryText)
+                    .tracking(0.6)
+
+                Rectangle()
+                    .fill(WidgetPalette.divider)
+                    .frame(height: 1)
+            }
+            .padding(.horizontal, 2)
+
+            content
+        }
+    }
+}
+
+/// Flat row: leading SF symbol + label (+ optional description) + trailing control.
+/// Use for simple controls that should share the Preferences hover treatment.
+private struct SettingsRow<Control: View>: View {
+    let icon: String?
+    let label: String
+    let description: String?
+    let control: Control
+    @State private var isHovering = false
+
+    init(icon: String? = nil, label: String, description: String? = nil, @ViewBuilder control: () -> Control) {
+        self.icon = icon
+        self.label = label
+        self.description = description
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .frame(width: 24, height: 24)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(WidgetTypography.prefsRowLabel)
+                    .foregroundStyle(WidgetPalette.primaryText)
+
+                if let description {
+                    Text(description)
+                        .font(WidgetTypography.prefsBody)
+                        .foregroundStyle(WidgetPalette.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer()
+            control
+        }
+        .padding(PreferencesChrome.rowPadding)
+        .background(preferencesInteractiveTileBackground(isHovering: isHovering, cornerRadius: PreferencesChrome.tileRadius))
+        .contentShape(RoundedRectangle(cornerRadius: PreferencesChrome.tileRadius, style: .continuous))
+        .onHover { isHovering = $0 }
     }
 }
 
@@ -392,47 +471,44 @@ struct GeneralPane: View {
                     badge: settings.showMenuBarIcon ? "Menu bar mode enabled" : "Dock mode enabled"
                 )
 
-                SettingsCard(
-                    title: "Startup & Access",
-                    subtitle: "Decide how WeatherWidget starts and where it stays accessible.",
-                    icon: "power"
-                ) {
-                    SettingsToggleTile(
-                        title: "Launch at Login",
-                        description: "Start WeatherWidget automatically when you sign in.",
-                        systemImage: "power",
-                        isOn: $launchAtLogin
-                    )
-                    .onChange(of: launchAtLogin) { enabled in
-                        updateLaunchAtLogin(enabled)
+                SettingsSection("Startup & Access") {
+                    SettingsRow(icon: "power", label: "Launch at Login",
+                                description: "Start automatically when you sign in.") {
+                        Toggle("Launch at Login", isOn: $launchAtLogin)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .tint(.white)
+                            .accessibilityLabel("Launch at Login")
+                    }
+                    .onChange(of: launchAtLogin) { enabled in updateLaunchAtLogin(enabled) }
+
+                    SettingsRow(icon: "menubar.rectangle", label: "Show Menu Bar Icon",
+                                description: "Keep the weather icon in the menu bar.") {
+                        Toggle("Show Menu Bar Icon", isOn: $settings.showMenuBarIcon)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .tint(.white)
+                            .accessibilityLabel("Show Menu Bar Icon")
                     }
 
-                    SettingsToggleTile(
-                        title: "Show Menu Bar Icon",
-                        description: "Keep the weather icon in the menu bar. Turning this off keeps the app in your Dock so you can still reopen settings.",
-                        systemImage: "menubar.rectangle",
-                        isOn: $settings.showMenuBarIcon
-                    )
-
-                    SettingsToggleTile(
-                        title: "Hide After Unlock",
-                        description: "Dismiss the floating widget after the screen unlocks.",
-                        systemImage: "lock.open.display",
-                        isOn: $settings.autoHideOnUnlock
-                    )
+                    SettingsRow(icon: "lock.open.display", label: "Hide After Unlock",
+                                description: "Dismiss the widget when the screen unlocks.") {
+                        Toggle("Hide After Unlock", isOn: $settings.autoHideOnUnlock)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .tint(.white)
+                            .accessibilityLabel("Hide After Unlock")
+                    }
 
                     if let launchAtLoginError {
                         Text(launchAtLoginError)
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.red.opacity(0.9))
+                            .foregroundStyle(WidgetPalette.tertiaryText)
+                            .padding(.horizontal, 4)
                     }
                 }
 
-                SettingsCard(
-                    title: "Placement",
-                    subtitle: "Shape the widget and place it exactly where it feels at home.",
-                    icon: "macwindow"
-                ) {
+                SettingsSection("Placement") {
                     SettingsControlBlock(
                         title: "Widget Size",
                         description: settings.widgetSize.footerDescription
@@ -444,6 +520,7 @@ struct GeneralPane: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .accessibilityLabel("Widget Size")
                     }
 
                     SettingsControlBlock(
@@ -463,11 +540,7 @@ struct GeneralPane: View {
                     }
                 }
 
-                SettingsCard(
-                    title: "Appearance & Refresh",
-                    subtitle: "Balance atmosphere, translucency, and update rhythm.",
-                    icon: "dial.medium"
-                ) {
+                SettingsSection("Appearance & Refresh") {
                     SettingsControlBlock(
                         title: "Auto-Refresh",
                         description: "Choose how often the widget asks for fresh weather data."
@@ -479,6 +552,7 @@ struct GeneralPane: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .accessibilityLabel("Refresh Interval")
                     }
 
                     SettingsControlBlock(
@@ -495,6 +569,7 @@ struct GeneralPane: View {
                             }
                             .pickerStyle(.segmented)
                             .labelsHidden()
+                            .accessibilityLabel("Glass Style")
 
                             if settings.glassStyle == .frosted {
                                 VStack(alignment: .leading, spacing: 8) {
@@ -510,13 +585,15 @@ struct GeneralPane: View {
 
                                     Slider(value: $settings.frostedOpacity, in: 0.3...1.0)
                                         .tint(.white)
+                                        .accessibilityLabel("Frosted Glass Opacity")
+                                        .accessibilityValue("\(Int(settings.frostedOpacity * 100)) percent")
                                 }
                             }
                         }
                     }
                 }
             }
-            .padding(24)
+            .padding(22)
         }
         .scrollIndicators(.hidden)
         .onAppear {
@@ -559,12 +636,13 @@ extension WidgetSize {
 
 struct PositionPickerRow: View {
     @Binding var selection: WidgetPosition
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 18) {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(WidgetPalette.surfaceTertiary)
+                    .fill(Color.white.opacity(0.035))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .strokeBorder(WidgetPalette.borderSecondary, lineWidth: 1)
@@ -598,8 +676,8 @@ struct PositionPickerRow: View {
                     .foregroundStyle(WidgetPalette.primaryText)
 
                 Text("Choose a corner to anchor the floating weather card.")
-                    .font(WidgetTypography.prefsBody)
-                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(WidgetPalette.tertiaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -611,7 +689,7 @@ struct PositionPickerRow: View {
         let isSelected = selection == pos
 
         return Button {
-            withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+            withAnimation(Motion.spring(Motion.quickSpring, reduceMotion: reduceMotion)) {
                 selection = pos
             }
         } label: {
@@ -666,11 +744,7 @@ struct WeatherPane: View {
 
                 LocationSettingsCard()
 
-                SettingsCard(
-                    title: "Units",
-                    subtitle: "Match the weather presentation to your habits and locale.",
-                    icon: "thermometer.medium"
-                ) {
+                SettingsSection("Units") {
                     SettingsControlBlock(
                         title: "Temperature",
                         description: "Choose the scale used throughout the widget."
@@ -682,6 +756,7 @@ struct WeatherPane: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .accessibilityLabel("Temperature Unit")
                     }
 
                     SettingsControlBlock(
@@ -695,6 +770,7 @@ struct WeatherPane: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .accessibilityLabel("Wind Speed Unit")
                     }
 
                     SettingsControlBlock(
@@ -708,22 +784,20 @@ struct WeatherPane: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .accessibilityLabel("Time Format")
                     }
                 }
 
-                SettingsCard(
-                    title: "Visible Details",
-                    subtitle: "Choose the supporting data points shown in the widget.",
-                    icon: "square.grid.2x2"
-                ) {
+                SettingsSection("Visible Details") {
                     ForEach(DetailCell.allCases) { cell in
                         let isLast = settings.visibleDetailCells.count == 1 && settings.visibleDetailCells.contains(cell)
-                        SettingsToggleTile(
-                            title: cell.label,
-                            description: "Show \(cell.shortLabel.lowercased()) in the expanded weather details.",
-                            systemImage: cell.icon,
-                            isOn: detailCellBinding(cell)
-                        )
+                        SettingsRow(icon: cell.icon, label: cell.label) {
+                            Toggle(cell.label, isOn: detailCellBinding(cell))
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .tint(.white)
+                                .accessibilityLabel("Show \(cell.label)")
+                        }
                         .opacity(isLast ? 0.5 : 1.0)
                         .disabled(isLast)
                     }
@@ -737,26 +811,19 @@ struct WeatherPane: View {
                     }
                 }
 
-                SettingsCard(
-                    title: "Data Sources",
-                    subtitle: "WeatherWidget is intentionally lightweight and keyless.",
-                    icon: "externaldrive"
-                ) {
-                    SettingsControlBlock(
-                        title: "Current Services",
-                        description: "These providers power weather, geocoding, and automatic location detection."
-                    ) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Weather: Open-Meteo")
-                            Text("Geocoding: Open-Meteo")
-                            Text("Automatic location: ipwho.is")
-                        }
-                        .font(WidgetTypography.prefsBody)
-                        .foregroundStyle(WidgetPalette.secondaryText)
+                SettingsSection("Data Sources") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Weather and geocoding from Open-Meteo", systemImage: "cloud")
+                        Label("Automatic location from ipwho.is", systemImage: "location")
                     }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .padding(PreferencesChrome.rowPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(preferencesInsetBackground(cornerRadius: PreferencesChrome.tileRadius))
                 }
             }
-            .padding(24)
+            .padding(22)
         }
         .scrollIndicators(.hidden)
     }
@@ -783,45 +850,55 @@ struct LocationSearchView: View {
     @State private var results: [GeocodingResult] = []
     @State private var isSearching = false
     @State private var searchError: String?
+    @State private var selectedIndex: Int = -1
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !settings.manualCityName.isEmpty {
+            if !settings.manualCityName.isEmpty && results.isEmpty && !isSearching {
                 Text(settings.manualCityName)
                     .font(WidgetTypography.prefsRowTitle)
                     .foregroundStyle(WidgetPalette.primaryText)
             }
 
-            HStack(spacing: 10) {
-                TextField("Search city", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(WidgetTypography.prefsBody)
-                    .foregroundStyle(WidgetPalette.primaryText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(preferencesTileBackground(cornerRadius: 14))
-                    .onSubmit { Task { await search() } }
-
-                Button("Search") {
-                    Task { await search() }
-                }
-                .buttonStyle(.plain)
-                .font(WidgetTypography.prefsRowTitle)
+            TextField("Search city…", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(WidgetTypography.prefsBody)
                 .foregroundStyle(WidgetPalette.primaryText)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .background(preferencesTileBackground(cornerRadius: 14))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(WidgetPalette.borderPrimary, lineWidth: 1)
-                )
-                .disabled(isSearching)
-            }
+                .background(preferencesInsetBackground(cornerRadius: 14))
+                .focused($fieldFocused)
+                .onKeyPressCompat(.escape) {
+                    searchText = ""
+                    results = []
+                    searchError = nil
+                }
+                .onKeyPressCompat(.upArrow) {
+                    if !results.isEmpty { selectedIndex = max(0, selectedIndex - 1) }
+                }
+                .onKeyPressCompat(.downArrow) {
+                    if !results.isEmpty { selectedIndex = min(results.count - 1, selectedIndex + 1) }
+                }
+                .onKeyPressCompat(.return) {
+                    if selectedIndex >= 0, selectedIndex < results.count { select(results[selectedIndex]) }
+                }
+                .task(id: searchText) {
+                    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !query.isEmpty else {
+                        results = []
+                        searchError = nil
+                        isSearching = false
+                        return
+                    }
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    await performSearch(query: query)
+                }
 
             if isSearching {
                 HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
+                    ProgressView().controlSize(.small)
                     Text("Searching…")
                         .font(WidgetTypography.prefsBody)
                         .foregroundStyle(WidgetPalette.secondaryText)
@@ -829,32 +906,28 @@ struct LocationSearchView: View {
             } else if let searchError {
                 Text(searchError)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.red.opacity(0.9))
+                    .foregroundStyle(WidgetPalette.tertiaryText)
             } else if !results.isEmpty {
-                VStack(spacing: 10) {
-                    ForEach(results) { result in
-                        Button {
-                            select(result)
-                        } label: {
+                VStack(spacing: 6) {
+                    ForEach(Array(results.enumerated()), id: \.element.id) { idx, result in
+                        Button { select(result) } label: {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(result.name)
-                                        .font(WidgetTypography.prefsRowTitle)
+                                        .font(idx == selectedIndex
+                                              ? .system(size: 13, weight: .bold)
+                                              : WidgetTypography.prefsRowTitle)
                                         .foregroundStyle(WidgetPalette.primaryText)
 
                                     let subtitle = [result.admin1, result.country]
-                                        .compactMap { $0 }
-                                        .joined(separator: ", ")
-
+                                        .compactMap { $0 }.joined(separator: ", ")
                                     if !subtitle.isEmpty {
                                         Text(subtitle)
                                             .font(WidgetTypography.prefsBody)
                                             .foregroundStyle(WidgetPalette.secondaryText)
                                     }
                                 }
-
                                 Spacer(minLength: 0)
-
                                 if settings.manualCityName == result.name &&
                                     abs(settings.manualLatitude - result.latitude) < 0.01 {
                                     Image(systemName: "checkmark")
@@ -863,7 +936,10 @@ struct LocationSearchView: View {
                                 }
                             }
                             .padding(14)
-                            .background(preferencesTileBackground(cornerRadius: 18))
+                            .background(preferencesInteractiveTileBackground(
+                                isHovering: idx == selectedIndex,
+                                cornerRadius: PreferencesChrome.tileRadius
+                            ))
                         }
                         .buttonStyle(.plain)
                     }
@@ -872,30 +948,22 @@ struct LocationSearchView: View {
         }
     }
 
-    private func search() async {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
-
+    private func performSearch(query: String) async {
         isSearching = true
         searchError = nil
-        results = []
+        selectedIndex = -1
 
         do {
             var comps = URLComponents(string: "https://geocoding-api.open-meteo.com/v1/search")!
             comps.queryItems = [
-                .init(name: "name", value: query),
-                .init(name: "count", value: "5"),
+                .init(name: "name",     value: query),
+                .init(name: "count",    value: "8"),
                 .init(name: "language", value: "en"),
-                .init(name: "format", value: "json"),
+                .init(name: "format",   value: "json"),
             ]
-
-            let (data, _) = try await URLSession.shared.data(from: comps.url!)
-            let response = try JSONDecoder().decode(GeocodingResponse.self, from: data)
+            let response: GeocodingResponse = try await NetworkClient.shared.get(comps.url!)
             results = response.results ?? []
-
-            if results.isEmpty {
-                searchError = "No cities found for \"\(query)\"."
-            }
+            if results.isEmpty { searchError = "No cities found for \"\(query)\"." }
         } catch {
             searchError = "Search failed. Check your connection and try again."
         }
@@ -909,8 +977,11 @@ struct LocationSearchView: View {
         settings.manualLongitude = result.longitude
         results = []
         searchText = ""
+        searchError = nil
+        selectedIndex = -1
     }
 }
+
 
 private struct LocationSettingsCard: View {
     @EnvironmentObject var settings: SettingsStore
@@ -918,7 +989,7 @@ private struct LocationSettingsCard: View {
     var body: some View {
         SettingsCard(
             title: "Location",
-            subtitle: "Stay automatic, or search for a city and keep it pinned.",
+            subtitle: "Use automatic lookup or pin a city.",
             icon: "location"
         ) {
             SettingsControlBlock(
@@ -1038,7 +1109,7 @@ struct AboutPane: View {
                     .foregroundStyle(WidgetPalette.tertiaryText)
                     .padding(.horizontal, 4)
             }
-            .padding(24)
+            .padding(22)
         }
         .scrollIndicators(.hidden)
     }
@@ -1046,18 +1117,60 @@ struct AboutPane: View {
 
 private func preferencesPanelBackground(cornerRadius: CGFloat) -> some View {
     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        .fill(WidgetPalette.preferencesPanel)
+        .fill(Color.white.opacity(0.065))
+        .background(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(0.46)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(WidgetPalette.borderSecondary, lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.105), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.28), radius: 24, x: 0, y: 18)
+        .shadow(color: .white.opacity(0.035), radius: 1, x: 0, y: 1)
 }
 
 private func preferencesTileBackground(cornerRadius: CGFloat) -> some View {
     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        .fill(WidgetPalette.preferencesTile)
+        .fill(Color.white.opacity(0.052))
+        .background(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(0.20)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(WidgetPalette.borderSecondary, lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.085), lineWidth: 1)
         )
+}
+
+private func preferencesInsetBackground(cornerRadius: CGFloat) -> some View {
+    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .fill(Color.white.opacity(0.035))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
+        )
+}
+
+private func preferencesInteractiveTileBackground(isHovering: Bool, cornerRadius: CGFloat) -> some View {
+    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .fill(Color.white.opacity(isHovering ? 0.075 : 0.04))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(isHovering ? 0.13 : 0.075), lineWidth: 1)
+        )
+        .shadow(color: isHovering ? .black.opacity(0.18) : .clear, radius: 8, x: 0, y: 5)
+}
+
+// Keyboard-nav helper: adds onKeyPress on macOS 14+; silently no-ops on 13.
+private extension View {
+    @ViewBuilder func onKeyPressCompat(_ key: KeyEquivalent, action: @escaping () -> Void) -> some View {
+        if #available(macOS 14, *) {
+            self.onKeyPress(key) { action(); return .handled }
+        } else {
+            self
+        }
+    }
 }

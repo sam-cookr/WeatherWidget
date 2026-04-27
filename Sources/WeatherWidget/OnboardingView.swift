@@ -1,3 +1,4 @@
+import WidgetScreenCore
 import SwiftUI
 
 // MARK: - Onboarding Step
@@ -14,6 +15,7 @@ struct OnboardingView: View {
 
     @State private var step: OnboardingStep = .welcome
     @State private var goingForward = true
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
         ZStack {
@@ -30,7 +32,7 @@ struct OnboardingView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: step)
+                .animation(Motion.spring(.spring(response: 0.4, dampingFraction: 0.85), reduceMotion: reduceMotion), value: step)
 
                 // ── Footer ────────────────────────────────────────────────────
                 footerBar
@@ -76,7 +78,7 @@ struct OnboardingView: View {
                     Capsule()
                         .fill(step == s ? Color.white.opacity(0.9) : Color.white.opacity(0.22))
                         .frame(width: step == s ? 18 : 6, height: 6)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: step)
+                        .animation(Motion.spring(.spring(response: 0.3, dampingFraction: 0.8), reduceMotion: reduceMotion), value: step)
                 }
             }
 
@@ -84,7 +86,7 @@ struct OnboardingView: View {
                 if step != .welcome {
                     Button("Back") {
                         goingForward = false
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        withAnimation(Motion.spring(.spring(response: 0.4, dampingFraction: 0.85), reduceMotion: reduceMotion)) {
                             step = OnboardingStep(rawValue: step.rawValue - 1) ?? .welcome
                         }
                     }
@@ -105,7 +107,7 @@ struct OnboardingView: View {
                 if step != OnboardingStep.allCases.last {
                     glassButton("Continue") {
                         goingForward = true
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        withAnimation(Motion.spring(.spring(response: 0.4, dampingFraction: 0.85), reduceMotion: reduceMotion)) {
                             step = OnboardingStep(rawValue: step.rawValue + 1) ?? .setup
                         }
                     }

@@ -1,17 +1,18 @@
 import Foundation
 import AppKit
 import Combine
+import Network
 
 // MARK: - Models
 
-struct ForecastDay {
+struct ForecastDay: Codable {
     let high: Double
     let low: Double
     let conditionCode: Int
     let dayLabel: String
 }
 
-struct WeatherData {
+struct WeatherData: Codable {
     let temperature: Double
     let feelsLike: Double
     let high: Double
@@ -57,10 +58,12 @@ func formatSunTime(_ iso: String, use24h: Bool) -> String {
 
 // MARK: - API Response Types
 
-private struct GeoResponse: Codable {
+struct GeoResponse: Codable {
     let city: String
     let latitude: Double
     let longitude: Double
+
+    var geoKey: String { WeatherCache.geoKey(latitude: latitude, longitude: longitude) }
 }
 
 private struct OpenMeteoResponse: Codable {
@@ -115,15 +118,54 @@ class WeatherViewModel: ObservableObject {
     @Published var weather: WeatherData?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var dataAge: Date?
+
+    var stalenessLevel: StalenessLevel {
+        guard let age = dataAge else { return .none }
+        let elapsed = Date().timeIntervalSince(age)
+        if elapsed > 7200 { return .veryStale }
+        if elapsed > 1800 { return .stale }
+        return .none
+    }
+
+    enum StalenessLevel { case none, stale, veryStale }
 
     private let settings: SettingsStore
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: Timer?
+    private let retryPolicy = RetryPolicy()
+    private var networkMonitor: NWPathMonitor?
+    private var fetchTask: Task<Void, Never>?
+    private let previewData: WeatherData?
 
-    init(settings: SettingsStore) {
+    init(settings: SettingsStore, previewData: WeatherData? = nil) {
         self.settings = settings
-        setupObservers()
-        startRefreshTimer()
+        self.previewData = previewData
+        if let previewData {
+            self.weather = previewData
+            self.dataAge = Date()
+        } else {
+            setupObservers()
+            startRefreshTimer()
+            startNetworkMonitor()
+        }
+    }
+
+    static func sample() -> WeatherData {
+        WeatherData(
+            temperature: 18, feelsLike: 16, high: 22, low: 13,
+            condition: "Partly Cloudy", conditionCode: 2,
+            windSpeed: 14, humidity: 65, uvIndex: 4,
+            precipChance: 15, dewPoint: 10,
+            sunriseISO: "2026-04-23T06:28", sunsetISO: "2026-04-23T19:52",
+            forecast: [
+                ForecastDay(high: 21, low: 12, conditionCode: 1, dayLabel: "Tomorrow"),
+                ForecastDay(high: 17, low: 11, conditionCode: 61, dayLabel: "Wed"),
+                ForecastDay(high: 20, low: 13, conditionCode: 0, dayLabel: "Thu"),
+            ],
+            city: "San Francisco",
+            windUnit: "km/h"
+        )
     }
 
     private func setupObservers() {
@@ -150,7 +192,27 @@ class WeatherViewModel: ObservableObject {
         refreshTimer = Timer.scheduledTimer(
             withTimeInterval: settings.refreshInterval.seconds,
             repeats: true
-        ) { [weak self] _ in Task { await self?.fetch() } }
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                guard self.retryPolicy.canAttemptNow else { return }
+                await self.fetch()
+            }
+        }
+    }
+
+    private func startNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        networkMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.retryPolicy.nextRetryDelay > 0 else { return }
+                self.retryPolicy.recordSuccess()
+                await self.fetch(force: true)
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "network.monitor"))
     }
 
     // MARK: - Computed unit helpers
@@ -185,7 +247,8 @@ class WeatherViewModel: ObservableObject {
 
     // MARK: - Fetch
 
-    func fetch() async {
+    func fetch(force: Bool = false) async {
+        guard force || retryPolicy.canAttemptNow else { return }
         isLoading = true
         errorMessage = nil
         let fahrenheit  = useFahrenheit
@@ -193,17 +256,29 @@ class WeatherViewModel: ObservableObject {
         let windDisplay = windDisplayUnit
         do {
             let geo  = try await fetchGeo()
+            // Show cached data immediately while network request runs
+            if let cached = await WeatherCache.shared.load(for: geo.geoKey), weather == nil {
+                self.weather = cached.data
+                self.dataAge = cached.fetchedAt
+            }
             let data = try await fetchWeather(geo: geo, useFahrenheit: fahrenheit,
                                               windApiUnit: windApi, windDisplayUnit: windDisplay)
             self.weather = data
+            self.dataAge = Date()
+            self.errorMessage = nil
+            await WeatherCache.shared.save(data, geoKey: geo.geoKey)
+            retryPolicy.recordSuccess()
         } catch {
-            errorMessage = "Could not load weather"
+            retryPolicy.recordFailure()
+            if weather == nil {
+                errorMessage = "Could not load weather"
+            }
+            // If we have cached data, keep showing it with the stale indicator — no error banner
         }
         isLoading = false
     }
 
     private func fetchGeo() async throws -> GeoResponse {
-        // Use manual location if configured
         if settings.locationMode == .manual, !settings.manualCityName.isEmpty {
             return GeoResponse(
                 city: settings.manualCityName,
@@ -211,9 +286,7 @@ class WeatherViewModel: ObservableObject {
                 longitude: settings.manualLongitude
             )
         }
-        let url = URL(string: "https://ipwho.is/")!
-        let (data, _) = try await URLSession.shared.data(from: url)
-        return try JSONDecoder().decode(GeoResponse.self, from: data)
+        return try await NetworkClient.shared.get(URL(string: "https://ipwho.is/")!)
     }
 
     private func fetchWeather(
@@ -237,12 +310,10 @@ class WeatherViewModel: ObservableObject {
             .init(name: "forecast_days",     value: "\(forecastDays)"),
         ]
 
-        let (data, _) = try await URLSession.shared.data(from: comps.url!)
-        let resp = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
+        let resp: OpenMeteoResponse = try await NetworkClient.shared.get(comps.url!)
         let c = resp.current
         let d = resp.daily
 
-        // Build optional 3-day forecast (indices 1-3, skipping today at index 0)
         var forecast: [ForecastDay] = []
         if settings.widgetSize == .large {
             for i in 1..<min(4, d.temperature2mMax.count) {

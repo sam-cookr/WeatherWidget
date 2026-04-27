@@ -1,9 +1,11 @@
+import WidgetScreenCore
 import SwiftUI
 import AppKit
 
 struct SettingsPanel: View {
     @Binding var showSettings: Bool
     @EnvironmentObject var settings: SettingsStore
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -97,7 +99,7 @@ struct SettingsPanel: View {
             Spacer()
 
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                withAnimation(Motion.spring(Motion.defaultSpring, reduceMotion: reduceMotion)) {
                     showSettings = false
                 }
             } label: {
@@ -239,6 +241,7 @@ struct SegmentPicker<T: SettingOption>: View {
     let options: [T]
     @Binding var selection: T
     @Namespace private var ns
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
         HStack(spacing: 4) {
@@ -246,7 +249,7 @@ struct SegmentPicker<T: SettingOption>: View {
                 let selected = selection == option
 
                 Button {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                    withAnimation(Motion.spring(Motion.quickSpring, reduceMotion: reduceMotion)) {
                         selection = option
                     }
                 } label: {
